@@ -1,0 +1,121 @@
+{
+  "variant": "variant_A",
+  "status": "COMPLETED_AND_ARCHIVED",
+  "executed_pid": 20624,
+  "executed_exit_code": 0,
+  "terminal_path": "C:\\Users\\notebook\\Documents\\ChatGPT\\alien\\backtest_runtime\\terminal64.exe",
+  "executed_config": "variant_A.ini",
+  "executed_preset_id": 12302,
+  "disambiguated_preset_id": 12311,
+  "disambiguated_preset_label": "A",
+  "metrics": {
+    "trades": 378,
+    "initial_deposit": 5000.0,
+    "net_profit": -250.53,
+    "final_balance": 4749.47,
+    "profit_factor": 0.812261,
+    "equity_dd_pct": 6.107824
+  },
+  "artifacts": {
+    "ALIEN122_12302_B.csv": {
+      "size_bytes": 618,
+      "sha256": "74035570424cdd6d34284a5f440abe57cf38f6a03ffd1fd3264f216f07a2f84c"
+    },
+    "ALIEN122_12302_B_deals.csv": {
+      "size_bytes": 114332,
+      "sha256": "349c55f4c0a9a461020055c689dd1c1cbad8368f5045947cbcbd83c3e3f58140"
+    },
+    "ALIEN122_12302_B_sinais.csv": {
+      "size_bytes": 100,
+      "sha256": "fc164dd3141d64322d190a0d153609b9c850259d914b63d902509da41c387ee8"
+    },
+    "ALIEN122_12311_B.csv": {
+      "size_bytes": 618,
+      "sha256": "74035570424cdd6d34284a5f440abe57cf38f6a03ffd1fd3264f216f07a2f84c"
+    },
+    "ALIEN122_12311_B_deals.csv": {
+      "size_bytes": 114332,
+      "sha256": "349c55f4c0a9a461020055c689dd1c1cbad8368f5045947cbcbd83c3e3f58140"
+    },
+    "ALIEN122_12311_B_sinais.csv": {
+      "size_bytes": 100,
+      "sha256": "fc164dd3141d64322d190a0d153609b9c850259d914b63d902509da41c387ee8"
+    },
+    "ALIEN122_variant_A.csv": {
+      "size_bytes": 618,
+      "sha256": "74035570424cdd6d34284a5f440abe57cf38f6a03ffd1fd3264f216f07a2f84c"
+    },
+    "ALIEN122_variant_A_deals.csv": {
+      "size_bytes": 114332,
+      "sha256": "349c55f4c0a9a461020055c689dd1c1cbad8368f5045947cbcbd83c3e3f58140"
+    },
+    "ALIEN122_variant_A_sinais.csv": {
+      "size_bytes": 100,
+      "sha256": "fc164dd3141d64322d190a0d153609b9c850259d914b63d902509da41c387ee8"
+    },
+    "ALIEN_V1089_REPORT_XAUUSD.x_315462944_802092_20260810_000000.txt": {
+      "size_bytes": 16308,
+      "sha256": "40cb9ff3358a352072a2a8e0f683544007fb070be90967a82b6bcb49ae6d6736"
+    },
+    "ALIEN_V1089_TRADES_XAUUSD.x_315462944_802092_20260810_000000.csv": {
+      "size_bytes": 74512,
+      "sha256": "7f2c74ae449317ccb8262a9d705d5d2246015992a077a36654d1c78af0d29f69"
+    },
+    "ALIEN_V12_1_XAUUSD.x_315462944.csv": {
+      "size_bytes": 572654,
+      "sha256": "e29f236a099021c81ea73648af408f1ac67951c2cd2b6aebbbe32fc1a53b9c4e"
+    },
+    "ALIEN_V12_3_HTF.XAUUSD.x.M5.20260810_20261110.4.CF620D8CDF14C3F867ED024A9157B6D3.tst": {
+      "size_bytes": 448212,
+      "sha256": "f2ab964148d158dd0a8f183e7d82ef39046990dd3185426d2e5c5d25936c8823"
+    },
+    "agent_tester_20261110.log": {
+      "size_bytes": 7835062,
+      "sha256": "064f6385e41ba0272c11345cd879355bc47b8cf0b9ff5b56a2be99c2fef8437d"
+    },
+    "terminal_20261110.log": {
+      "size_bytes": 36550,
+      "sha256": "55901ad7f12685afcae05cf1890a0178ede43a98084938b91a90b6e32d2af414"
+    },
+    "tester_20261110.log": {
+      "size_bytes": 7381484,
+      "sha256": "536329c174f9d91a54f8f10058225e4cf090174cedc3dc5a5dd5293da09b2596"
+    },
+    "variant_A-holding.png": {
+      "size_bytes": 16681,
+      "sha256": "350c7737b119234909d5fa52143078315eac85c88ad37234a440be3f29c88278"
+    },
+    "variant_A-hst.png": {
+      "size_bytes": 33187,
+      "sha256": "79141796923877b8b3d26d14569988f380995cf9d787f4e3f29aa5fe89e934a3"
+    },
+    "variant_A-mfemae.png": {
+      "size_bytes": 40955,
+      "sha256": "b5fc5313003c55801db4aedbbfccf7c0a0d8683634f43397681b523d941a1c09"
+    },
+    "variant_A.htm": {
+      "size_bytes": 867660,
+      "sha256": "088ac4c3cf05aad30f228af34214b885f0db61fd4d916f8b234d0afaab4f6002"
+    },
+    "variant_A.ini": {
+      "size_bytes": 490,
+      "sha256": "ccfabb9c7d8178297d5361cbb444b619c27f8aaf5645a222cc1640f57ed1533e"
+    },
+    "variant_A.png": {
+      "size_bytes": 10982,
+      "sha256": "1119cc5a570f05e4f1719a5ccfb62d92d483a7d283dac751b49b5d0c6b84cc6a"
+    },
+    "variant_A.set": {
+      "size_bytes": 5745,
+      "sha256": "b7e468670cb6807629240044619970a5c1eb6742a3682eb50756526b3e8cf5ee"
+    },
+    "variant_A.tst": {
+      "size_bytes": 448212,
+      "sha256": "f2ab964148d158dd0a8f183e7d82ef39046990dd3185426d2e5c5d25936c8823"
+    },
+    "variant_A_executed.set": {
+      "size_bytes": 5730,
+      "sha256": "662c1f20edb2f7d98886b2d807774a8fdbdd31ef6e34e0317c00c26c6d85e896"
+    }
+  }
+}
