@@ -10,6 +10,8 @@ input double HTFDisplacementATR      = 0.30; // Deslocamento institucional míni
 input double HTFStopBufferATR        = 0.08; // Folga de proteção além do pavio
 input bool   RequireM1Confirmation   = true; // Exige quebra de estrutura (CHoCH/BOS) em M1
 input bool   RequireStrictFVG        = false;// Se falso, aceita FVG H1 OU Extremo de Liquidez M15
+input bool   RequireM1DisplacementFilter = false;// Se verdadeiro, exige corpo direcional minimo em ATR e dominancia no M1
+input bool   RequireH1BiasFilter         = false;// Se verdadeiro, exige alinhamento com o vies estrutural de H1
 
 int htfDirection=0, htfStage=0;
 datetime htfM5Seen=0, htfM15Seen=0, htfArmedAt=0, htfExpires=0, htfBreakAt=0;
@@ -176,14 +178,18 @@ bool CheckM1Confirmation(int dir, datetime minM1CloseTime, double atrPts, double
       return false; // Vela formada antes ou durante o fechamento do candle M5
    }
 
-   double candleRange = m1[0].high - m1[0].low;
-   if(candleRange <= 0.0) return false;
+   // Filtro de Deslocamento M1 (Variante 1 - Isolada e desacoplada da referencia base)
+   if(RequireM1DisplacementFilter)
+   {
+      double candleRange = m1[0].high - m1[0].low;
+      if(candleRange <= 0.0) return false;
 
-   double body = MathAbs(m1[0].close - m1[0].open);
-   double minDisplacement = (HTFDisplacementATR > 0.0) ? (HTFDisplacementATR * atrPts * _Point) : (2.0 * _Point);
+      double body = MathAbs(m1[0].close - m1[0].open);
+      double minDisplacement = (HTFDisplacementATR > 0.0) ? (HTFDisplacementATR * atrPts * _Point) : (2.0 * _Point);
 
-   // Aplica HTFDisplacementATR: exige corpo direcional mínimo e dominância da vela (corpo >= 50% do range)
-   if(body < minDisplacement || (body / candleRange) < 0.50) return false;
+      // Exige corpo direcional mínimo e dominância da vela (corpo >= 50% do range da vela M1)
+      if(body < minDisplacement || (body / candleRange) < 0.50) return false;
+   }
 
    // Para compra: último candle M1 fechou verde rompendo a máxima da vela anterior
    if(dir > 0)
@@ -352,6 +358,13 @@ void HTFProcess(const MqlTick &tick)
       // Varredura de fundo (para compra) ou topo (para venda) com controle estrito de AllowBuy e AllowSell
       bool sweepBuy  = (AllowBuy  && m5[0].low  < lookbackLow  - MinSweepPoints*_Point && m5[0].close > lookbackLow);
       bool sweepSell = (AllowSell && m5[0].high > lookbackHigh + MinSweepPoints*_Point && m5[0].close < lookbackHigh);
+
+      // Filtro de Viés Direcional H1 (Variante 2 - Isolada)
+      if(RequireH1BiasFilter)
+      {
+         if(sweepBuy  && hourBias < 0) { sweepBuy  = false; diag_htf_neutral++; }
+         if(sweepSell && hourBias > 0) { sweepSell = false; diag_htf_neutral++; }
+      }
 
       int sweepDir = 0;
       if(sweepBuy)
