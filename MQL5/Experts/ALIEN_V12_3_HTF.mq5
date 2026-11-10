@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| XAU TICK ALIEN V12.1 INSTITUTIONAL - GOAT FUNDED TRADER 10K BLINDADO |
 //| Arquitetura Quant: D1/H4/H1 contexto; M15/M5 confirmacao                 |
 //| 5 Blindagens Ativas: Hard Circuit Breaker, Friday Close, HTF Veto|
@@ -28,7 +28,7 @@ input double LabSlipPtsPerSide = 5.0; // hipotese de stress, calibrar no feed
 
 
 input group "=== ALIEN V12: MESA PROPRIETARIA (GOAT 5K) & BLINDAGEM INSTITUCIONAL ==="
-input bool   AllowLiveRealTrading     = true;  // Permissao explicita para operacao em Conta Real
+input bool   AllowLiveRealTrading     = false; // Bloqueado por padrao em versao experimental (Seguranca)
 input double DailyProfitTargetMoney   = 50.00;  // Meta diaria Goat 5K ($50)
 input bool   StopOnDailyProfitTarget  = false;  // Disjuntor/pausa diaria desativada a pedido do operador
 input bool   EnableHardCircuitBreaker = false;  // Disjuntor diario DESATIVADO a pedido do operador
@@ -36,7 +36,7 @@ input double DailyMaxLossMoney        = 0.00;   // Disjuntor diario DESATIVADO (
 input double TotalMaxLossMoney        = 250.00; // Trava total Goat 5K ($250)
 input double WeeklyMaxLossMoney       = 0.00;   // Disjuntor semanal DESATIVADO
 input int    MaxDailyTrades           = 100;    // Teto ampliado de trades por dia
-input bool   TradeLondonAndNYOnly     = false;  // Operar liberado em qualquer sessao
+input bool   TradeLondonAndNYOnly     = true;   // Foco nas sessoes de alta liquidez: Londres e Nova York
 input bool   EnableHighWaterMarkGuard = true;   // Trava se devolver lucro a partir do pico de equidade do dia
 input double MaxTrailingDDPct         = 1.50;   // Limite de recuo do pico do dia (%)
 input bool   EnableFastBreakEven      = true;   // Puxa stop para BE assim que atingir 1.2R
