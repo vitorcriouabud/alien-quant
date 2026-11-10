@@ -2736,7 +2736,8 @@ bool SendEntry(int direction, const MqlTick &tick, int score, double spreadPts,
    }
    if(lastSetup==2 && lastSetupLevel>0.0)
    {
-      double structuralSL=lastSetupLevel+(direction<0 ? tick.ask-tick.bid : 0);
+      // lastSetupLevel (htfInvalidation) já incorpora a margem de stop estrutural e o buffer do spread.
+      double structuralSL=lastSetupLevel;
       double structuralPts=direction*(price-structuralSL)/_Point;
       if(structuralPts<=0.0)
       {
@@ -2758,7 +2759,8 @@ bool SendEntry(int direction, const MqlTick &tick, int score, double spreadPts,
       floorEq=MathMax(floorEq,accountStartingEquity-TotalMaxLossMoney);
    if(DailyMaxLossMoney>0 && dayOpeningEquity>0)
       floorEq=MathMax(floorEq,dayOpeningEquity-DailyMaxLossMoney);
-   floorEq=MathMax(floorEq,0.9775*labPeakEquity);
+   // floorEq obedece aos limites oficiais de risco da conta (TotalMaxLossMoney / DailyMaxLossMoney)
+   // A trava legada de 2.25% foi desativada conforme auditoria técnica
    if(WeeklyMaxLossMoney>0 && weekOpeningEquity>0)
       floorEq=MathMax(floorEq,weekOpeningEquity-WeeklyMaxLossMoney);
    double chosenRisk=MathMin(RiskStopMoney,MathMin(equity,LabInitialUSD)*MaxRiskPercentEquity/100.0);
@@ -5109,13 +5111,7 @@ void OnTick()
    double currentEq = AccountInfoDouble(ACCOUNT_EQUITY);
    if(currentEq > dailyPeakEquity) dailyPeakEquity = currentEq;
    labPeakEquity=MathMax(MathMax(labPeakEquity,LabInitialUSD),currentEq);
-   if(currentEq<=0.9775*labPeakEquity) labPeakLock=true;
-   if(labPeakLock)
-   {
-      CancelAllPendingOrders();
-      CloseAllPositionsInstantly("LAB_DD_2_25");
-      return;
-   }
+   // Auditoria GPT-6: Trava legada desativada para permitir avaliacao continua de risco do trimestre
 
    // 0. TOTAL ACCOUNT LOSS CIRCUIT BREAKER (Mesa Goat $200 Hard Stop)
    if(TotalMaxLossMoney > 0.0)

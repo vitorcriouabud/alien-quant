@@ -156,8 +156,8 @@ void HTFReset(string reason)
    htfStatus = reason;
 }
 
-// Confirmação estrutural no M1 (CHoCH / Micro-BOS com deslocamento)
-bool CheckM1Confirmation(int dir, datetime minM1CloseTime, double &confirmPrice)
+// Confirmação estrutural no M1 com deslocamento direcional em ATR (Auditoria GPT-6 + Gemini)
+bool CheckM1Confirmation(int dir, datetime minM1CloseTime, double atrPts, double &confirmPrice)
 {
    if(!RequireM1Confirmation)
    {
@@ -175,6 +175,15 @@ bool CheckM1Confirmation(int dir, datetime minM1CloseTime, double &confirmPrice)
    {
       return false; // Vela formada antes ou durante o fechamento do candle M5
    }
+
+   double candleRange = m1[0].high - m1[0].low;
+   if(candleRange <= 0.0) return false;
+
+   double body = MathAbs(m1[0].close - m1[0].open);
+   double minDisplacement = (HTFDisplacementATR > 0.0) ? (HTFDisplacementATR * atrPts * _Point) : (2.0 * _Point);
+
+   // Aplica HTFDisplacementATR: exige corpo direcional mínimo e dominância da vela (corpo >= 50% do range)
+   if(body < minDisplacement || (body / candleRange) < 0.50) return false;
 
    // Para compra: último candle M1 fechou verde rompendo a máxima da vela anterior
    if(dir > 0)
@@ -216,7 +225,7 @@ void HTFProcess(const MqlTick &tick)
    if(htfStage == 1)
    {
       double confirmPrice = 0.0;
-      if(CheckM1Confirmation(htfDirection, htfArmedAt, confirmPrice))
+      if(CheckM1Confirmation(htfDirection, htfArmedAt, htfManagementATR, confirmPrice))
       {
          double spread = (tick.ask - tick.bid) / _Point;
          if(spread <= AbsoluteMaxSpreadPts && spread <= htfManagementATR * MaxSpreadAsATR)
@@ -340,9 +349,9 @@ void HTFProcess(const MqlTick &tick)
          lookbackLow  = MathMin(lookbackLow,  m15[i].low);
       }
 
-      // Varredura de fundo (para compra) ou topo (para venda)
-      bool sweepBuy  = (m5[0].low  < lookbackLow  - MinSweepPoints*_Point && m5[0].close > lookbackLow);
-      bool sweepSell = (m5[0].high > lookbackHigh + MinSweepPoints*_Point && m5[0].close < lookbackHigh);
+      // Varredura de fundo (para compra) ou topo (para venda) com controle estrito de AllowBuy e AllowSell
+      bool sweepBuy  = (AllowBuy  && m5[0].low  < lookbackLow  - MinSweepPoints*_Point && m5[0].close > lookbackLow);
+      bool sweepSell = (AllowSell && m5[0].high > lookbackHigh + MinSweepPoints*_Point && m5[0].close < lookbackHigh);
 
       int sweepDir = 0;
       if(sweepBuy)
