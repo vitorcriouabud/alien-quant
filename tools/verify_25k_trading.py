@@ -1,9 +1,10 @@
+import os
 import MetaTrader5 as mt5
 
 ok = mt5.initialize(
     path=r"C:\Goat_MT5_25K\terminal64.exe",
     login=436271843,
-    password=ros.environ.get("GOAT_25K_PASSWORD", "PROTECTED_PASSWORD"),
+    password=os.environ.get("GOAT_25K_PASSWORD", "PROTECTED_PASSWORD"),
     server="GoatFunded-Server2"
 )
 print("=== GOAT 25K STATUS ===")

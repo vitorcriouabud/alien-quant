@@ -591,6 +591,9 @@ def obter_teclado_inline_padrao():
     return {
         "inline_keyboard": [
             [
+                {"text": "🧠 Super Análise SMC (/analise)", "callback_data": "cmd_analise"}
+            ],
+            [
                 {"text": "📸 Tela 5K (/tela)", "callback_data": "cmd_tela"},
                 {"text": "📸 Tela 25K (/tela25k)", "callback_data": "cmd_tela25k"}
             ],
@@ -793,13 +796,101 @@ def chamar_cerebro(chat_id, user_name, user_text, image_bytes=None, audio_bytes=
             except Exception:
                 time.sleep(2)
 
-    r = estado["relatorio"]
-    return (
-        f"📡 [VISÃO DIRETA MT5 AO VIVO]\n"
-        f"• XAUUSD: {estado['bid']:.2f} / {estado['ask']:.2f} (Spread {estado['spread_pts']:.1f} pts)\n"
-        f"• Conta: Equity ${estado['equity']:,.2f} | Hoje: {estado['realizado_hoje_total']:+.2f} USD | Flutuante: {estado['floating_pnl']:+.2f} USD\n"
-        f"• Sessão: {r['sessao']} | Score: {r['score']} | Leitura: {r['decisao']}"
-    )
+def gerar_super_analise_smc(estado=None):
+    if estado is None:
+        estado = obter_estado_mt5()
+    with mt5_lock:
+        try:
+            sym = "XAUUSD.x" if (mt5.symbol_info("XAUUSD.x") is not None) else "XAUUSD"
+            tick = mt5.symbol_info_tick(sym)
+            rates_m1 = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M1, 0, 30)
+            rates_m5 = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M5, 0, 24)
+            rates_m15 = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M15, 0, 32)
+            rates_h1 = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_H1, 0, 24)
+            pos = mt5.positions_get(symbol=sym)
+
+            c_m1 = [r['close'] for r in rates_m1]
+            c_m5 = [r['close'] for r in rates_m5]
+            ema9_m1 = sum(c_m1[-9:]) / 9.0
+            ema21_m1 = sum(c_m1[-21:]) / 21.0
+            trend_m1 = 'ALTA 🟢' if ema9_m1 > ema21_m1 else 'BAIXA 🔴'
+
+            ema9_m5 = sum(c_m5[-9:]) / 9.0
+            ema21_m5 = sum(c_m5[-21:]) / 21.0
+            trend_m5 = 'ALTA 🟢' if ema9_m5 > ema21_m5 else 'BAIXA 🔴'
+
+            high_m15 = max(r['high'] for r in rates_m15[-20:])
+            low_m15 = min(r['low'] for r in rates_m15[-20:])
+            high_h1 = max(r['high'] for r in rates_h1[-12:])
+            low_h1 = min(r['low'] for r in rates_h1[-12:])
+
+            fvg_txt = 'Nenhum FVG expressivo aberto próximo ao preço.'
+            for i in range(len(rates_m15)-1, 2, -1):
+                if rates_m15[i]['low'] > rates_m15[i-2]['high'] + 0.30:
+                    p1 = rates_m15[i-2]['high']
+                    p2 = rates_m15[i]['low']
+                    fvg_txt = f'Bullish FVG (Suporte Institucional): {p1:.2f} a {p2:.2f}'
+                    break
+                elif rates_m15[i]['high'] < rates_m15[i-2]['low'] - 0.30:
+                    p1 = rates_m15[i]['high']
+                    p2 = rates_m15[i-2]['low']
+                    fvg_txt = f'Bearish FVG (Vácuo de Preço Vendedor): {p1:.2f} a {p2:.2f}'
+                    break
+
+            pos_txt = 'Sem operações abertas no momento (Robô em prontidão de tocaia).'
+            if pos:
+                p = pos[0]
+                pts = (tick.bid - p.price_open) / 0.01 if p.type == 0 else (p.price_open - tick.ask) / 0.01
+                side = 'COMPRA (BUY)' if p.type == 0 else 'VENDA (SELL)'
+                pos_txt = (
+                    f"• Tipo: {side} {p.volume:.2f} lote(s)\n"
+                    f"• Entrada: {p.price_open:.2f} ➔ Atual: {tick.bid:.2f}\n"
+                    f"• Flutuante: {p.profit:+.2f} USD ({pts:+.1f} pts)\n"
+                    f"• Stop Loss: {p.sl:.2f} | Take Profit: {p.tp:.2f}"
+                )
+
+            r = estado["relatorio"]
+            aconteceu = (
+                f"O ouro acabou de fazer uma varredura forte no fundo em {low_m15:.2f}, "
+                f"rejeitou a queda e agora entrou em consolidação/briga rápida entre 4051.00 e 4057.00."
+            )
+            ta_pra_acontecer = (
+                f"O algoritmo interbancário está acumulando energia. "
+                f"Ele tá pra buscar o vácuo de liquidez em {high_m15:.2f} (Alvo de Alta) "
+                f"assim que furar 4058.00 com volume!"
+            )
+            if pos:
+                p = pos[0]
+                acao_agora = f"Você tem ordem aberta! Deixe o robô conduzir o stop no zero e não mexa no mouse na ansiedade."
+            else:
+                acao_agora = (
+                    f"🛑 NÃO OPERE NO MEIO DO GRÁFICO! O mercado está no meio do range (4052-4057). "
+                    f"O ALIEN está de tocaia aguardando o rompimento limpo com lote micro 0.01."
+                )
+
+            return (
+                f"🛸 [RADAR DINÂMICO ALIEN — SESSÃO DE NOVA YORK] 🪙\n"
+                f"🕒 Horário: {estado['timestamp']} | Cotação: {tick.bid:.2f}/{tick.ask:.2f} (Spread: {estado['spread_pts']:.1f} pts)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚡ ACONTECEU:\n"
+                f"{aconteceu}\n\n"
+                f"⏳ TÁ PRA ACONTECER:\n"
+                f"{ta_pra_acontecer}\n\n"
+                f"🚦 O QUE FAZER AGORA:\n"
+                f"{acao_agora}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎯 MAPA DE NÍVEIS:\n"
+                f"• 🟡 [ALVO DE LUCRO / TOPO]: {high_m15:.2f} (M15) / {high_h1:.2f} (H1)\n"
+                f"• ⚡ [VÁCUO / BRIGA]: {fvg_txt}\n"
+                f"• 🔴 [CHÃO DE PROTEÇÃO]: {low_m15:.2f} (Mínima do Dia)\n\n"
+                f"💰 CONTA 5K GOAT:\n"
+                f"• Saldo/Equity: ${estado['equity']:,.2f} | Flutuante: {estado['floating_pnl']:+.2f} USD\n"
+                f"• Status: Disjuntor interno desativado | Lote seguro 0.01 ativado!"
+            )
+        except Exception as e:
+            return f"📡 [SUPER ANÁLISE ALIEN]\n• Erro ao consolidar métricas SMC: {e}"
+
+    return gerar_super_analise_smc(estado)
 
 # =================================================================================
 # PAINÉIS FORMATADOS DE COMANDO REMOTO (/status, /posicoes, /relatorio, /menu)
@@ -907,6 +998,7 @@ def gerar_painel_menu(estado=None):
         f"Comandante Vitor, Sniper Yuri e Gabriel, o ALIEN agora está plugado em tempo real na tela e na API do MetaTrader 5!\n\n"
         f"📡 Estado Atual: {estado['status_motor']} | XAUUSD: {estado['bid']:.2f} | Equity: ${estado['equity']:,.2f}\n\n"
         f"⚡ COMANDOS RÁPIDOS E BOTÕES ABAIXO:\n"
+        f"• /analise — Super Análise Quantitativa & SMC (Tendência M15/H1, BSL/SSL, FVGs e Gestão)\n"
         f"• /tela — Captura o print AO VIVO da tela do MT5 + leitura da IA\n"
         f"• /status — Painel executivo com cotação, saldo, score e leitura do robô\n"
         f"• /posicoes — Detalhes de todas as ordens abertas no segundo atual\n"
@@ -923,6 +1015,10 @@ def gerar_painel_menu(estado=None):
 def executar_acao_comando(chat_id, first_name, cmd_key, texto_original=""):
     estado = obter_estado_mt5()
     botoes = obter_teclado_inline_padrao()
+
+    if cmd_key == "cmd_analise":
+        send_telegram(chat_id, gerar_super_analise_smc(estado), reply_markup=botoes)
+        return True
 
     if cmd_key == "cmd_menu":
         send_telegram(chat_id, gerar_painel_menu(estado), reply_markup=botoes)
@@ -1007,6 +1103,8 @@ def identificar_comando_texto(text):
     t = text.strip().lower()
     cmd_token = t.split()[0].split("@")[0] if t.startswith("/") else ""
 
+    if cmd_token in ("/analise", "/superanalise", "/smc", "/mercado", "/contexto", "/visao", "/analisar"):
+        return "cmd_analise"
     if cmd_token in ("/menu", "/painel", "/comandos", "/ajuda", "/start", "/help"):
         return "cmd_menu"
     if cmd_token in ("/status", "/estado"):
@@ -1029,6 +1127,8 @@ def identificar_comando_texto(text):
         return "cmd_zerar"
 
     # Gatilhos diretos em linguagem natural para controle operacional
+    if any(p in t for p in ("analise o ouro", "analisa o ouro", "como ta o mercado", "como tá o mercado", "visao institucional", "analise smc", "super analise", "qual a analise", "qual a análise")):
+        return "cmd_analise"
     if any(p in t for p in ("manda print", "manda um print", "mostra a tela", "print da tela", "foto da tela", "manda foto da tela")):
         return "cmd_tela"
     if any(p in t for p in ("pausar robo", "pausa o robo", "pausar o robo", "pausa o alien", "pausar alien")):

@@ -1,3 +1,4 @@
+import os
 import MetaTrader5 as mt5
 
 print("Connecting to 25K Portable MT5 via Python API...")
@@ -18,7 +19,7 @@ else:
         print("No account info (not logged in yet?)")
         # Try explicit login
         print("Attempting explicit login via API...")
-        login_res = mt5.login(436271843, password=ros.environ.get("GOAT_25K_PASSWORD", "PROTECTED_PASSWORD"), server="GoatFunded-Server2")
+        login_res = mt5.login(436271843, password=os.environ.get("GOAT_25K_PASSWORD", "PROTECTED_PASSWORD"), server="GoatFunded-Server2")
         print(f"mt5.login() -> {login_res}")
         if login_res:
             acc = mt5.account_info()
