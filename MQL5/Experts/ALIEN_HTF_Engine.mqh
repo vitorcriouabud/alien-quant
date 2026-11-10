@@ -80,6 +80,35 @@ int HTFBias(MqlRates &r[])
    return 0;
 }
 
+//+------------------------------------------------------------------+
+//| Calcula o Equilibrium 50% H1 sem Look-Ahead Bias (Auditoria GPT) |
+//+------------------------------------------------------------------+
+bool CalculateH1_Equilibrium(const string symbol, double &eq_price, double &range_pts)
+{
+   MqlRates rates_h1[];
+   ArraySetAsSeries(rates_h1, true);
+   
+   // Copia a partir da barra 1 (barra já fechada), pegando as últimas 24h
+   int copied = CopyRates(symbol, PERIOD_H1, 1, 24, rates_h1);
+   if(copied < 24) return false;
+   
+   double highest_h1 = rates_h1[0].high;
+   double lowest_h1  = rates_h1[0].low;
+   
+   for(int i = 1; i < copied; i++)
+   {
+      if(rates_h1[i].high > highest_h1) highest_h1 = rates_h1[i].high;
+      if(rates_h1[i].low  < lowest_h1)  lowest_h1  = rates_h1[i].low;
+   }
+   
+   range_pts = (highest_h1 - lowest_h1) / SymbolInfoDouble(symbol, SYMBOL_POINT);
+   if(range_pts <= 0) return false;
+   
+   // Formula pura de P/D sem repaint
+   eq_price = (highest_h1 + lowest_h1) * 0.5;
+   return true;
+}
+
 // Zonas de FVG em H1 ou Extremo M15 categorizado
 bool HTFFindZone(MqlRates &h[], int dir, double eventLow, double eventHigh,
                  double &zoneLow, double &zoneHigh, string &zoneType)
@@ -128,7 +157,7 @@ void HTFReset(string reason)
 }
 
 // Confirmação estrutural no M1 (CHoCH / Micro-BOS com deslocamento)
-bool CheckM1Confirmation(int dir, double &confirmPrice)
+bool CheckM1Confirmation(int dir, datetime minM1CloseTime, double &confirmPrice)
 {
    if(!RequireM1Confirmation)
    {
@@ -138,6 +167,14 @@ bool CheckM1Confirmation(int dir, double &confirmPrice)
    MqlRates m1[];
    ArraySetAsSeries(m1, true);
    if(CopyRates(_Symbol, PERIOD_M1, 1, 10, m1) < 5) return false;
+
+   // REGRA DE SINCRONIZAÇÃO TEMPORAL (ChatGPT Auditoria):
+   // A barra M1 m1[0] fechou em m1[0].time + 60.
+   // Ela só é válida se tiver fechado estritamente APÓS a confirmação da vela M5 que armou o setup (minM1CloseTime).
+   if(m1[0].time + 60 <= minM1CloseTime)
+   {
+      return false; // Vela formada antes ou durante o fechamento do candle M5
+   }
 
    // Para compra: último candle M1 fechou verde rompendo a máxima da vela anterior
    if(dir > 0)
@@ -179,7 +216,7 @@ void HTFProcess(const MqlTick &tick)
    if(htfStage == 1)
    {
       double confirmPrice = 0.0;
-      if(CheckM1Confirmation(htfDirection, confirmPrice))
+      if(CheckM1Confirmation(htfDirection, htfArmedAt, confirmPrice))
       {
          double spread = (tick.ask - tick.bid) / _Point;
          if(spread <= AbsoluteMaxSpreadPts && spread <= htfManagementATR * MaxSpreadAsATR)
@@ -265,15 +302,15 @@ void HTFProcess(const MqlTick &tick)
       }
    }
 
-   // 2. CONTEXTO H1 & PREMIUM / DISCOUNT (Range das últimas 24 velas fechadas)
-   double h1High = h1[1].high, h1Low = h1[1].low;
-   for(int k=2; k<=24 && k<ArraySize(h1); k++)
+   // 2. CONTEXTO H1 & PREMIUM / DISCOUNT 50% SEM LOOK-AHEAD BIAS (Últimas 24h fechadas)
+   double h1Mid = 0.0, h1RangePts = 0.0;
+   if(!CalculateH1_Equilibrium(_Symbol, h1Mid, h1RangePts))
    {
-      if(h1[k].high > h1High) h1High = h1[k].high;
-      if(h1[k].low < h1Low)   h1Low  = h1[k].low;
+      diag_history_fail++;
+      htfStatus = "Falha ao calcular Equilibrium H1 50%";
+      return;
    }
-   double h1Range = h1High - h1Low;
-   double h1Mid = (h1High + h1Low) * 0.5;
+   double h1Range = h1RangePts * _Point;
    int hourBias = HTFBias(h1);
    
    // Registra localização institucional
@@ -310,22 +347,22 @@ void HTFProcess(const MqlTick &tick)
       int sweepDir = 0;
       if(sweepBuy)
       {
-         // Filtro de Terreno: Não compra em Premium extremo (>75% do range)
-         if(m5[0].close > h1Mid + 0.25*h1Range)
+         // Filtro de Terreno (Auditoria): Compra autorizada apenas na Discount Zone (< Equilibrium 50%)
+         if(m5[0].close >= h1Mid)
          {
             diag_premium_discount_blocked++;
-            HTFReset("Compra bloqueada: preco em Premium profundo H1");
+            HTFReset("Compra bloqueada: preco em Premium H1 (acima do Equilibrium 50%)");
             return;
          }
          sweepDir = 1;
       }
       else if(sweepSell)
       {
-         // Filtro de Terreno: Não vende em Discount extremo (<25% do range)
-         if(m5[0].close < h1Mid - 0.25*h1Range)
+         // Filtro de Terreno (Auditoria): Venda autorizada apenas na Premium Zone (> Equilibrium 50%)
+         if(m5[0].close <= h1Mid)
          {
             diag_premium_discount_blocked++;
-            HTFReset("Venda bloqueada: preco em Discount profundo H1");
+            HTFReset("Venda bloqueada: preco em Discount H1 (abaixo do Equilibrium 50%)");
             return;
          }
          sweepDir = -1;
@@ -349,71 +386,20 @@ void HTFProcess(const MqlTick &tick)
          return;
       }
 
-      // Setup armado com invalidação técnica cravada
+      // Setup armado com invalidação técnica cravada (Auditoria Calibração Goat 5K):
+      // Long: SL = Low_pavio - buffer (executado no Bid)
+      // Short: SL = High_pavio + Spread_atual + buffer (executado no Ask para evitar violacao prematura)
       htfDirection    = sweepDir;
-      htfInvalidation = eventExtreme - sweepDir * MathMax(2.0*_Point, HTFStopBufferATR * atrPts * _Point);
-      htfArmedAt      = m5[0].time;
+      double stopSpread = (sweepDir < 0) ? (tick.ask - tick.bid) : 0.0;
+      double bufferPts  = MathMax(15.0, HTFStopBufferATR * atrPts);
+      htfInvalidation = (sweepDir > 0) ? (eventExtreme - bufferPts * _Point) : (eventExtreme + stopSpread + bufferPts * _Point);
+      htfArmedAt      = m5[0].time + 300; // Momento exato em que a vela M5 fechou
       htfExpires      = htfArmedAt + HTFSetupLifeMinutes * 60;
       htfStage        = 1;
-      htfStatus       = StringFormat("Varredura %s [%s] armada! Aguardando confirmacao M1.", 
-                                     (sweepDir > 0 ? "FUNDO" : "TOPO"), zType);
+      htfStatus       = StringFormat("Varredura %s [%s] armada em %s! SL: %.2f | Aguardando confirmacao M1 (Modelo B).", 
+                                     (sweepDir > 0 ? "FUNDO" : "TOPO"), zType, TimeToString(htfArmedAt, TIME_MINUTES), htfInvalidation);
       htfArms++;
       LogEvent("HTF_SWEEP_ARMED", htfStatus, (double)sweepDir);
-   }
-
-   // 4. CONFIRMAÇÃO M1 & EXECUÇÃO COM RISCO CASADO
-   if(htfStage == 1)
-   {
-      double confirmPrice = 0.0;
-      if(!CheckM1Confirmation(htfDirection, confirmPrice))
-      {
-         diag_m1_confirm_fail++;
-         htfStatus = "Varredura confirmada: aguardando deslocamento/CHoCH em M1";
-         return;
-      }
-
-      double spread = (tick.ask - tick.bid) / _Point;
-      if(spread > AbsoluteMaxSpreadPts || spread > atrPts * MaxSpreadAsATR)
-      {
-         HTFReset("Spread elevado: entrada cancelada");
-         return;
-      }
-
-      double entry = (htfDirection > 0) ? tick.ask : tick.bid;
-      double riskPts = MathAbs(entry - htfInvalidation) / _Point;
-      
-      // Stop estrutural mínimo aceitável
-      if(riskPts < 15.0) riskPts = 15.0;
-
-      // Verificação anti-reentrada
-      string key = StringFormat("ALIEN_HTF_%d_%d", (int)AccountInfoInteger(ACCOUNT_LOGIN), (int)htfArmedAt);
-      if(GlobalVariableCheck(key))
-      {
-         HTFReset("Setup já executado");
-         return;
-      }
-      GlobalVariableSet(key, 1.0);
-      GlobalVariablesFlush();
-
-      lastSetup = 2; // Setup com stop estrutural estrito
-      lastSetupLevel = htfInvalidation; // Passa a invalidação EXATA para o SendEntry
-      lastScore = 98;
-      lastOpposingRoomPts = riskPts * 2.5;
-      barStart = m5[0].time;
-      lastReason = StringFormat("Sweep %s em M15 com confirmacao M1 (SL %.2f)", 
-                                (htfDirection > 0 ? "FUNDO" : "TOPO"), htfInvalidation);
-
-      htfAttempts++;
-      bool sent = SendEntry(htfDirection, tick, lastScore, spread, atrPts, quiet, quiet, htfDirection, htfDirection, false);
-      if(sent)
-      {
-         diag_entries_taken++;
-         HTFReset("Entrada institucional executada com sucesso!");
-      }
-      else
-      {
-         diag_risk_fail++;
-         HTFReset("Entrada bloqueada por risco ou margem: " + lastReason);
-      }
+      return;
    }
 }

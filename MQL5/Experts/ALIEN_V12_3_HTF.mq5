@@ -1309,9 +1309,10 @@ bool NewEntriesAllowedBySupervisor()
    RefreshWeeklyEquityBaseline();
    RefreshWeeklyStats();
 
-   if(!AllowLiveRealTrading && !MQLInfoInteger(MQL_TESTER) && AccountInfoInteger(ACCOUNT_TRADE_MODE) != ACCOUNT_TRADE_MODE_DEMO)
+   // Trava estrita de auditoria (Auditoria GPT-6): bloqueia novas ordens fora do Tester (Real e Demo)
+   if(!MQLInfoInteger(MQL_TESTER))
    {
-      supervisorMessage = "TRAVA DE SEGURANCA: AllowLiveRealTrading=false (Conta Real Bloqueada).";
+      supervisorMessage = "TRAVA DE AUDITORIA: ALIEN V12.3 HTF autorizado EXCLUSIVAMENTE para Strategy Tester. Ordens fora do Tester bloqueadas (Real e Demo).";
       return false;
    }
 
@@ -2689,6 +2690,12 @@ bool SendEntry(int direction, const MqlTick &tick, int score, double spreadPts,
                double atrPts, TickMetrics &shortM, TickMetrics &longM,
                int trendM1, int trendM5, bool addon=false)
 {
+   if(!MQLInfoInteger(MQL_TESTER))
+   {
+      lastReason="TRAVA DE AUDITORIA: ALIEN V12.3 HTF autorizado EXCLUSIVAMENTE para Strategy Tester.";
+      ++riskRejected;
+      return false;
+   }
    if(!NewEntriesAllowedBySupervisor())
    {
       lastReason=supervisorMessage;
@@ -4316,6 +4323,12 @@ void MapMaybePlacePending()
    if(!AlienSessionEntryAllowed(TimeCurrent()))
    {mapPendingMessage="Sessao/cautela: nenhuma nova pendente";return;}
    if(MapPendingOrdersCount()>0 || SymbolHasAnyPosition()) return;
+   if(!MQLInfoInteger(MQL_TESTER))
+   {
+      lastReason="TRAVA DE AUDITORIA: ALIEN V12.3 HTF autorizado EXCLUSIVAMENTE para Strategy Tester.";
+      ++riskRejected;
+      return;
+   }
    if(!NewEntriesAllowedBySupervisor())
    {mapPendingMessage="Risco: "+supervisorMessage;return;}
    MqlTick tick;
