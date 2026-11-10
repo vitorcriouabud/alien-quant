@@ -1399,14 +1399,15 @@ bool NewEntriesAllowedBySupervisor()
       return false;
    }
 
-   // Filtro de Sessao de Alta Liquidez (Londres + NY: 08:00 as 18:00 UTC)
+   // Filtro de Sessao de Alta Liquidez (Londres: 07-11 UTC | NY: 12-17 UTC)
    if(TradeLondonAndNYOnly)
    {
       MqlDateTime dt;
       TimeToStruct(AlienServerUTC(TimeCurrent()), dt);
-      if(dt.hour < 8 || dt.hour >= 18)
+      bool inWindow = ((dt.hour >= 7 && dt.hour < 11) || (dt.hour >= 12 && dt.hour < 17));
+      if(!inWindow)
       {
-         supervisorMessage = StringFormat("FORA DA JANELA DE ALTA LIQUIDEZ: UTC %02d:%02d (Permitido: 08:00 as 18:00 UTC).",
+         supervisorMessage = StringFormat("FORA DA JANELA INSTITUCIONAL: UTC %02d:%02d (Londres 07-11 UTC / NY 12-17 UTC).",
                                           dt.hour, dt.min);
          return false;
       }
@@ -2726,17 +2727,13 @@ bool SendEntry(int direction, const MqlTick &tick, int score, double spreadPts,
       }
       stopPts=MathMax(minBrokerPts,MathMax(structuralPts,SweepMinimumStopATR*atrPts));
    }
-   if(UseBOSStructureStop && lastSetup==2 && atrPts>0.0 && lastSetupLevel>0.0)
+   if(lastSetup==2 && lastSetupLevel>0.0)
    {
-      double previousLow=iLow(_Symbol,PERIOD_M5,1);
-      double previousHigh=iHigh(_Symbol,PERIOD_M5,1);
-      double invalidation=direction>0 ? MathMin(lastSetupLevel,previousLow) :
-                                         MathMax(lastSetupLevel,previousHigh);
-      double structuralSL=invalidation+(direction<0 ? tick.ask-tick.bid : 0)-direction*MathMax(2.0,0.06*atrPts)*_Point;
+      double structuralSL=lastSetupLevel+(direction<0 ? tick.ask-tick.bid : 0);
       double structuralPts=direction*(price-structuralSL)/_Point;
       if(structuralPts<=0.0)
       {
-         lastReason="BOS: estrutura invalida para posicionar stop";
+         lastReason="Invalidação de stop menor ou igual a zero";
          return false;
       }
       stopPts=MathMax(minBrokerPts,structuralPts);

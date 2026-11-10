@@ -6,8 +6,10 @@ input group "=== CONTEXTO H1 (DIREÇÃO) / M15 (ZONA) / M5 (GATILHO) ==="
 input int    HTFHistoryBars          = 100;
 input int    HTFSweepLookback        = 12;   // Barras M15 para mapear topos e fundos
 input int    HTFSetupLifeMinutes     = 45;   // Validade máxima do setup armado
-input double HTFDisplacementATR      = 0.35; // Deslocamento institucional mínimo
+input double HTFDisplacementATR      = 0.30; // Deslocamento institucional mínimo
 input double HTFStopBufferATR        = 0.08; // Folga de proteção além do pavio
+input bool   RequireM1Confirmation   = true; // Exige quebra de estrutura (CHoCH/BOS) em M1
+input bool   RequireStrictFVG        = false;// Se falso, aceita FVG H1 OU Extremo de Liquidez M15
 
 int htfDirection=0, htfStage=0;
 datetime htfM5Seen=0, htfM15Seen=0, htfArmedAt=0, htfExpires=0, htfBreakAt=0;
@@ -20,10 +22,10 @@ int htfBars=0, htfAligned=0, htfSweeps=0, htfArms=0, htfBreaks=0, htfRetests=0, 
 int diag_history_fail=0;
 int diag_session_blocked=0;
 int diag_htf_neutral=0;
+int diag_premium_discount_blocked=0;
 int diag_sweep_fail=0;
 int diag_zone_fail=0;
-int diag_bos_fail=0;
-int diag_retest_fail=0;
+int diag_m1_confirm_fail=0;
 int diag_risk_fail=0;
 int diag_entries_taken=0;
 
@@ -31,8 +33,8 @@ void HTFPrintStats()
 {
    PrintFormat("HTF_AUDIT: bars=%d aligned=%d sweeps=%d arms=%d bos=%d retests=%d attempts=%d entries=%d | Status: %s",
                htfBars, htfAligned, htfSweeps, htfArms, htfBreaks, htfRetests, htfAttempts, diag_entries_taken, htfStatus);
-   PrintFormat("DIAGNOSTICO DE BLOQUEIOS: hist_fail=%d sessao_bloq=%d htf_neutro=%d sweep_fail=%d zone_fail=%d bos_fail=%d risk_fail=%d",
-               diag_history_fail, diag_session_blocked, diag_htf_neutral, diag_sweep_fail, diag_zone_fail, diag_bos_fail, diag_risk_fail);
+   PrintFormat("DIAGNOSTICO DE BLOQUEIOS: hist_fail=%d sessao_bloq=%d prem_disc_bloq=%d sweep_fail=%d zone_fail=%d m1_fail=%d risk_fail=%d",
+               diag_history_fail, diag_session_blocked, diag_premium_discount_blocked, diag_sweep_fail, diag_zone_fail, diag_m1_confirm_fail, diag_risk_fail);
 }
 
 bool HTFLoad(ENUM_TIMEFRAMES tf, MqlRates &r[])
@@ -78,12 +80,12 @@ int HTFBias(MqlRates &r[])
    return 0;
 }
 
-// Zonas de FVG em H1
+// Zonas de FVG em H1 ou Extremo M15 categorizado
 bool HTFFindZone(MqlRates &h[], int dir, double eventLow, double eventHigh,
-                 double &zoneLow, double &zoneHigh)
+                 double &zoneLow, double &zoneHigh, string &zoneType)
 {
    double atr = HTFATR(h);
-   for(int i=1; i<ArraySize(h)-2 && i<30; i++)
+   for(int i=1; i<ArraySize(h)-2 && i<24; i++)
    {
       double lo = (dir > 0) ? h[i+2].high : h[i].high;
       double hi = (dir > 0) ? h[i].low   : h[i+2].low;
@@ -100,20 +102,62 @@ bool HTFFindZone(MqlRates &h[], int dir, double eventLow, double eventHigh,
          if(valid && eventLow <= hi + 5.0*_Point && eventHigh >= lo - 5.0*_Point)
          {
             zoneLow = lo; zoneHigh = hi;
+            zoneType = "FVG_H1_CONFIRMADO";
             return true;
          }
       }
    }
-   // Se não houver FVG fechado específico, a zona de extremo H1 é válida
-   zoneLow  = eventLow;
-   zoneHigh = eventHigh;
-   return true;
+   
+   // Se RequireStrictFVG for falso, aceita extremos mapeados de M15 explicitamente
+   if(!RequireStrictFVG)
+   {
+      zoneLow  = eventLow;
+      zoneHigh = eventHigh;
+      zoneType = "EXTREMO_LIQUIDEZ_M15";
+      return true;
+   }
+
+   zoneType = "SEM_ZONA_VALIDA";
+   return false;
 }
 
 void HTFReset(string reason)
 {
    htfStage = 0;
    htfStatus = reason;
+}
+
+// Confirmação estrutural no M1 (CHoCH / Micro-BOS com deslocamento)
+bool CheckM1Confirmation(int dir, double &confirmPrice)
+{
+   if(!RequireM1Confirmation)
+   {
+      confirmPrice = (dir > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      return true;
+   }
+   MqlRates m1[];
+   ArraySetAsSeries(m1, true);
+   if(CopyRates(_Symbol, PERIOD_M1, 1, 10, m1) < 5) return false;
+
+   // Para compra: último candle M1 fechou verde rompendo a máxima da vela anterior
+   if(dir > 0)
+   {
+      if(m1[0].close > m1[0].open && m1[0].close > m1[1].high)
+      {
+         confirmPrice = m1[0].close;
+         return true;
+      }
+   }
+   // Para venda: último candle M1 fechou vermelho rompendo a mínima da vela anterior
+   else if(dir < 0)
+   {
+      if(m1[0].close < m1[0].open && m1[0].close < m1[1].low)
+      {
+         confirmPrice = m1[0].close;
+         return true;
+      }
+   }
+   return false;
 }
 
 void HTFProcess(const MqlTick &tick)
@@ -161,38 +205,37 @@ void HTFProcess(const MqlTick &tick)
    htfM5Seen = m5[0].time;
    htfBars++;
 
-   // 1. FILTRO DE SESSÕES (LONDRES: 07-10 UTC / NY: 12-16 UTC)
+   // 1. FILTRO DE SESSÕES (LONDRES: 07-11 UTC / NY: 12-17 UTC)
    if(TradeLondonAndNYOnly)
    {
       MqlDateTime dt;
       TimeToStruct(AlienServerUTC(TimeCurrent()), dt);
-      bool inLondon = (dt.hour >= 7 && dt.hour < 10);
-      bool inNY     = (dt.hour >= 12 && dt.hour < 16);
+      bool inLondon = (dt.hour >= 7 && dt.hour < 11);
+      bool inNY     = (dt.hour >= 12 && dt.hour < 17);
       if(!inLondon && !inNY)
       {
          diag_session_blocked++;
-         HTFReset("Fora das janelas de ouro (Londres 07-10 UTC / NY 12-16 UTC)");
+         HTFReset("Fora das janelas de ouro (Londres 07-11 UTC / NY 12-17 UTC)");
          return;
       }
    }
 
-   // 2. CONTEXTO H1 (Sem D1/H4 rígido: H1 dá o viés do Day Trade)
-   double h1High = h1[0].high, h1Low = h1[0].low;
-   for(int k=1; k<24 && k<ArraySize(h1); k++)
+   // 2. CONTEXTO H1 & PREMIUM / DISCOUNT (Range das últimas 24 velas fechadas)
+   double h1High = h1[1].high, h1Low = h1[1].low;
+   for(int k=2; k<=24 && k<ArraySize(h1); k++)
    {
       if(h1[k].high > h1High) h1High = h1[k].high;
       if(h1[k].low < h1Low)   h1Low  = h1[k].low;
    }
+   double h1Range = h1High - h1Low;
    double h1Mid = (h1High + h1Low) * 0.5;
    int hourBias = HTFBias(h1);
    
-   // Regra de Terreno: Em Discount favorece compras; em Premium favorece vendas
-   int directionalBias = hourBias;
-   if(directionalBias == 0)
-      directionalBias = (m5[0].close < h1Mid) ? 1 : -1;
+   // Registra localização institucional
+   bool inDiscount = (m5[0].close < h1Mid);
+   bool inPremium  = (m5[0].close >= h1Mid);
 
    htfAligned++;
-   htfDirection = directionalBias;
 
    if(!NewEntriesAllowedBySupervisor())
    {
@@ -220,48 +263,67 @@ void HTFProcess(const MqlTick &tick)
       bool sweepSell = (m5[0].high > lookbackHigh + MinSweepPoints*_Point && m5[0].close < lookbackHigh);
 
       int sweepDir = 0;
-      if(sweepBuy && directionalBias >= 0) sweepDir = 1;
-      else if(sweepSell && directionalBias <= 0) sweepDir = -1;
+      if(sweepBuy)
+      {
+         // Filtro de Terreno: Não compra em Premium extremo (>75% do range)
+         if(m5[0].close > h1Mid + 0.25*h1Range)
+         {
+            diag_premium_discount_blocked++;
+            HTFReset("Compra bloqueada: preco em Premium profundo H1");
+            return;
+         }
+         sweepDir = 1;
+      }
+      else if(sweepSell)
+      {
+         // Filtro de Terreno: Não vende em Discount extremo (<25% do range)
+         if(m5[0].close < h1Mid - 0.25*h1Range)
+         {
+            diag_premium_discount_blocked++;
+            HTFReset("Venda bloqueada: preco em Discount profundo H1");
+            return;
+         }
+         sweepDir = -1;
+      }
 
       if(sweepDir == 0)
       {
          diag_sweep_fail++;
-         htfStatus = "Aguardando varredura em extremo M15/M5 alinhada ao H1";
+         htfStatus = "Aguardando varredura em extremo M15/M5 alinhada";
          return;
       }
 
       htfSweeps++;
       double eventExtreme = (sweepDir > 0) ? m5[0].low : m5[0].high;
+      string zType = "";
       
-      if(!HTFFindZone(h1, sweepDir, eventExtreme - 2.0*_Point, eventExtreme + 2.0*_Point, htfZoneLow, htfZoneHigh))
+      if(!HTFFindZone(h1, sweepDir, eventExtreme - 2.0*_Point, eventExtreme + 2.0*_Point, htfZoneLow, htfZoneHigh, zType))
       {
          diag_zone_fail++;
-         htfStatus = "Varredura fora de zona institucional";
+         htfStatus = "Varredura fora de zona institucional validada";
          return;
       }
 
-      // Setup armado na varredura com rejeição
+      // Setup armado com invalidação técnica cravada
       htfDirection    = sweepDir;
-      htfInvalidation = eventExtreme - sweepDir * (HTFStopBufferATR * atrPts * _Point);
+      htfInvalidation = eventExtreme - sweepDir * MathMax(2.0*_Point, HTFStopBufferATR * atrPts * _Point);
       htfArmedAt      = m5[0].time;
       htfExpires      = htfArmedAt + HTFSetupLifeMinutes * 60;
       htfStage        = 1;
-      htfStatus       = StringFormat("Varredura %s confirmada! Aguardando gatilho de reteste.", (sweepDir > 0 ? "FUNDO" : "TOPO"));
+      htfStatus       = StringFormat("Varredura %s [%s] armada! Aguardando confirmacao M1.", 
+                                     (sweepDir > 0 ? "FUNDO" : "TOPO"), zType);
       htfArms++;
       LogEvent("HTF_SWEEP_ARMED", htfStatus, (double)sweepDir);
    }
 
-   // 4. M5 / M1 GATILHO DE EXECUÇÃO
+   // 4. CONFIRMAÇÃO M1 & EXECUÇÃO COM RISCO CASADO
    if(htfStage == 1)
    {
-      // Verifica se o candle M5 atual ou anterior rejeitou o extremo e fechou a favor
-      bool confirmed = false;
-      if(htfDirection > 0 && m5[0].close > m5[0].open && tick.bid > m5[0].open) confirmed = true;
-      if(htfDirection < 0 && m5[0].close < m5[0].open && tick.ask < m5[0].open) confirmed = true;
-
-      if(!confirmed)
+      double confirmPrice = 0.0;
+      if(!CheckM1Confirmation(htfDirection, confirmPrice))
       {
-         diag_bos_fail++;
+         diag_m1_confirm_fail++;
+         htfStatus = "Varredura confirmada: aguardando deslocamento/CHoCH em M1";
          return;
       }
 
@@ -275,12 +337,8 @@ void HTFProcess(const MqlTick &tick)
       double entry = (htfDirection > 0) ? tick.ask : tick.bid;
       double riskPts = MathAbs(entry - htfInvalidation) / _Point;
       
-      // Stop mínimo seguro
+      // Stop estrutural mínimo aceitável
       if(riskPts < 15.0) riskPts = 15.0;
-
-      // Alvo em Risco/Retorno 1:2.5
-      double target = (htfDirection > 0) ? (entry + riskPts * 2.5 * _Point)
-                                         : (entry - riskPts * 2.5 * _Point);
 
       // Verificação anti-reentrada
       string key = StringFormat("ALIEN_HTF_%d_%d", (int)AccountInfoInteger(ACCOUNT_LOGIN), (int)htfArmedAt);
@@ -292,12 +350,13 @@ void HTFProcess(const MqlTick &tick)
       GlobalVariableSet(key, 1.0);
       GlobalVariablesFlush();
 
-      lastSetup = 1; // Liquidity Sweep
-      lastSetupLevel = htfInvalidation;
-      lastScore = 95;
+      lastSetup = 2; // Setup com stop estrutural estrito
+      lastSetupLevel = htfInvalidation; // Passa a invalidação EXATA para o SendEntry
+      lastScore = 98;
       lastOpposingRoomPts = riskPts * 2.5;
       barStart = m5[0].time;
-      lastReason = StringFormat("Sweep %s em H1/M15 com rejeicao M5", (htfDirection > 0 ? "FUNDO" : "TOPO"));
+      lastReason = StringFormat("Sweep %s em M15 com confirmacao M1 (SL %.2f)", 
+                                (htfDirection > 0 ? "FUNDO" : "TOPO"), htfInvalidation);
 
       htfAttempts++;
       bool sent = SendEntry(htfDirection, tick, lastScore, spread, atrPts, quiet, quiet, htfDirection, htfDirection, false);
