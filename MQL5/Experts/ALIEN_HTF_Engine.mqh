@@ -175,6 +175,51 @@ void HTFProcess(const MqlTick &tick)
       HTFReset("Setup expirou ou perdeu a invalidacao no tick");
    }
 
+   // SE O SETUP ESTIVER ARMADO (ESTÁGIO 1), VERIFICA A CONFIRMAÇÃO M1 A CADA TICK/M1
+   if(htfStage == 1)
+   {
+      double confirmPrice = 0.0;
+      if(CheckM1Confirmation(htfDirection, confirmPrice))
+      {
+         double spread = (tick.ask - tick.bid) / _Point;
+         if(spread <= AbsoluteMaxSpreadPts && spread <= htfManagementATR * MaxSpreadAsATR)
+         {
+            double entry = (htfDirection > 0) ? tick.ask : tick.bid;
+            double riskPts = MathAbs(entry - htfInvalidation) / _Point;
+            if(riskPts < 15.0) riskPts = 15.0;
+
+            string key = StringFormat("ALIEN_HTF_%d_%d", (int)AccountInfoInteger(ACCOUNT_LOGIN), (int)htfArmedAt);
+            if(!GlobalVariableCheck(key))
+            {
+               lastSetup = 2;
+               lastSetupLevel = htfInvalidation;
+               lastScore = 98;
+               lastOpposingRoomPts = riskPts * 2.5;
+               barStart = iTime(_Symbol, PERIOD_M1, 0);
+               lastReason = StringFormat("Sweep %s com confirmacao M1 (SL %.2f)", 
+                                         (htfDirection > 0 ? "FUNDO" : "TOPO"), htfInvalidation);
+
+               htfAttempts++;
+               bool sent = SendEntry(htfDirection, tick, lastScore, spread, htfManagementATR, quiet, quiet, htfDirection, htfDirection, false);
+               if(sent)
+               {
+                  GlobalVariableSet(key, 1.0);
+                  GlobalVariablesFlush();
+                  diag_entries_taken++;
+                  HTFReset("Entrada institucional executada com sucesso!");
+                  return;
+               }
+               else
+               {
+                  diag_risk_fail++;
+                  HTFReset("Entrada bloqueada por risco ou margem: " + lastReason);
+                  return;
+               }
+            }
+         }
+      }
+   }
+
    datetime closedM5 = iTime(_Symbol, PERIOD_M5, 1);
    if(closedM5 == 0 || closedM5 == htfM5Seen) return;
    
