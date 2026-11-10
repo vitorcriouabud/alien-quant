@@ -1,0 +1,9 @@
+# ALIEN — PRÓXIMOS PASSOS PRIORIZADOS (PROXIMOS_PASSOS.md)
+
+| Ordem | Ação Técnica | Meta / Hipótese Verificável | Método de Validação | Ferramenta / Arquivo |
+|---|---|---|---|---|
+| **1** | **Auditoria Funcional e Backtest de Triagem da V10.89** | Rodar primeiro backtest controlado da base V10.89 em XAUUSD M1 com parâmetros padrão para avaliar se a leitura em ticks de Sweeps e BOS supera o P0. | Strategy Tester com histórico de Outubro/2026 (ticks já baixados). Comparar métricas líquidas com spread real. | `V10_89_ORIGINAL.mq5` / Strategy Tester |
+| **2** | **Estudo Quantitativo de Microestrutura M1 (ALIEN Observer)** | Executar script ou indicador para medir estatisticamente: quantas vezes uma varredura de swing M1 gera deslocamento mínimo de 2R antes de ser invalidada? | Exportar eventos do ALIEN Observer para CSV e processar distribuição de retorno e taxa de acerto. | `ALIEN_Observer.mq5` / CSV Logger |
+| **3** | **Modelagem do Orçamento de Risco US$ 12 / Semana** | Ajustar o módulo `WeeklyEquityGuard` para trabalhar com banca padrão de demonstração (ex: US$ 1.000 ou US$ 10.000), mas limitando a perda acumulada da semana em exatamente US$ 12 (com pausa obrigatória). | Validar fechamento forçado de posições e bloqueio de novas ordens ao bater -$12. | `WeeklyEquityGuard.mqh` |
+| **4** | **Filtro de Classificação de Regime de Mercado** | Implementar classificador de regime baseado em deslocamento, volatilidade e alinhamento de médias (diferenciando tendência limpa de consolidação errática). | Reduzir as perdas catastróficas observadas em regimes de transição (como o mês de setembro de 2026). | Módulo `MarketRegime.mqh` |
+| **5** | **Aprimoramento do Professor Visual** | Exibir no gráfico exatamente a leitura de contexto (H1/M15), zona de interesse, gatilho M1, ponto de invalidação lógica e relação R:R líquida. | Renderização de painel enxuto e caixas limpas no gráfico do MT5. | `ChartTeacher.mqh` |

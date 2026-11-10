@@ -1,0 +1,26 @@
+# ALIEN QUANT LAB - .gitignore
+# Logs e arquivos temporarios
+*.log
+*.tmp
+*.flag
+*.zip
+
+# Historico bruto de ticks e relatorios pesados
+*.csv
+results/
+temp/
+
+# Credenciais e arquivos de configuracao sensiveis
+*.ini
+tools/*.ini
+tools/*.xml
+.env
+*.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Arquivos de imagem gerados dinamicamente
+*.png
+REPORTS/*.png

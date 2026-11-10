@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-11-08 22:27:36",
+  "versao_rede": "ALIEN_V11_2_MESH_1.0",
+  "operadores": {
+    "vitor": {
+      "papel": "Lideranca Central / Laboratorio Matriz",
+      "status": "ONLINE"
+    },
+    "yuri": {
+      "papel": "Operador Especialista Goat 10K / XAUUSD",
+      "status": "ONLINE"
+    },
+    "gabriel": {
+      "papel": "Operador Aprendiz / Disciplina",
+      "status": "ONLINE"
+    }
+  },
+  "arquivos_criticos": {
+    "ALIEN_V11_2_GOAT_10K.ex5": {
+      "sha256": "266d56e9e397c4085873fae9d6e66f381710989e487bfe611e1e8c4e54fc29ee",
+      "regras": {
+        "ativo": "XAUUSD (Ouro)",
+        "timeframe": "M1",
+        "banca": 10000.0,
+        "lote": 0.18,
+        "limite_diario_goat": 200.0,
+        "disjuntor_alien": 140.0,
+        "meta_diaria": 100.0,
+        "meta_fase1": 1000.0
+      }
+    },
+    "ALIEN_V11_2_FREEDOM.ex5": {
+      "sha256": "e599880e94c75a978029734f409933c385bcdac4d3ecf14b08dc7c306c7fbe2c"
+    }
+  },
+  "ultima_auditoria": {
+    "experimento": "EXP-014",
+    "periodo": "05/10/2026 a 17/10/2026 (10 dias)",
+    "lucro_liquido": 748.3,
+    "profit_factor": 2.47,
+    "max_drawdown_pct": 0.83,
+    "status": "APROVADO COM EXCELENCIA"
+  }
+}
