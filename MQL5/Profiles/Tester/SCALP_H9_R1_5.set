@@ -1,0 +1,17 @@
+; EXPERIMENTAL - nao e preset validado da mesa 5K
+; Resetar inputs antes de carregar. Executar uma combinacao por teste.
+ScalpHypothesisMode=9
+ScalpLabTargetR=1.5
+ScalpLabFixedExit=true
+ScalpLabMaxChaseATR=0.25
+ScalpLabMinTargetCostRatio=3.0
+AllowLiveRealTrading=false
+ExpertMagic=802220
+FixedLot=0.01
+MaxAdaptiveLot=0.01
+EnableEvidenceScaling=false
+EnablePyramid=false
+MaxOwnPositions=1
+EnableZonePendingOrders=false
+UseRiskRewardTakeProfit=true
+MaxRiskPercentEquity=0.25

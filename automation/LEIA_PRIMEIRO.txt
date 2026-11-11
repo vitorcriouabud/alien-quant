@@ -1,0 +1,57 @@
+ALIEN — MONITOR LOCAL PARA NODE.JS
+
+1. Extraia a pasta inteira em um local fixo do notebook.
+2. Abra INICIAR_MONITOR.bat com dois cliques.
+3. Deixe a janela aberta junto com o MT5. Para parar: Ctrl+C ou feche a janela.
+
+Nao precisa npm install, Python, chave de API ou assinatura de IA.
+Requer Node.js 18+ no PATH do Windows (node --version).
+
+O monitor procura CSVs ALIEN_V*_TRADES_*.csv nos terminais normais dentro de
+%APPDATA%\MetaQuotes\Terminal. Contas e magics ficam em conjuntos separados.
+Nao procura dados de backtests. Se o MT5 for portatil, arraste sua pasta
+MQL5\Files para cima de INICIAR_MONITOR.bat NAO funciona como --root;
+use no Prompt: INICIAR_MONITOR.bat --root "D:\SeuTerminal\MQL5\Files"
+
+Se aparecer zero arquivos, confira se o EA ALIEN esta rodando com
+EnableTelemetry=true e se existem operacoes fechadas gravadas pelo EA.
+O programa nao instala nem inicia o EA e nao se conecta ao MT5 pela rede.
+O EA V12.2 ainda precisa compilar e passar pelos testes indicados na documentacao.
+
+O que e criado em dados\:
+- PAINEL_ALIEN.html: painel atualizado a cada 30 segundos, enquanto monitor aberto.
+- DIAGNOSTICO.txt: resumo legivel.
+- ENVIAR_AO_CHATGPT.json: arquivo unico para anexar na conversa.
+- estado-local.json: memoria persistente com deduplicacao; nao apagar.
+
+O estado local conserva os arquivos/dados ja importados, mesmo se os CSVs
+forem removidos. Para iniciar uma pesquisa separada, escolha outra pasta:
+INICIAR_MONITOR.bat --out "D:\ALIEN_PESQUISA_2"
+
+Compartilhamento:
+O JSON para enviar nao contem numero de conta, caminho local, ID da posicao
+nem credenciais. Ainda contem horarios, simbolo, volume e resultado: sao seus
+registros financeiros. Nada e enviado automaticamente. Anexe o JSON quando
+quiser uma revisao e atualizacao do robo nesta conversa.
+
+Limites claros:
+- Le operacoes fechadas; nao monitora equity ou posicoes abertas.
+- Drawdown e entre fechamentos, nao drawdown maximo de equity.
+- O CSV atual nao traz SL/TP inicial nem MAE/MFE. Nao inventamos esses dados.
+- Nao conta todos os bloqueios: isso exige ampliar a telemetria do EA.
+- Lucro liquido e o valor gravado pelo EA; conferir com historico da corretora.
+- Nao altera codigo, parametros, lotes, ordens ou instalacao do terminal.
+- Nao executa backtests nem substitui o robo automaticamente.
+- Resultado positivo nao significa vantagem comprovada; sinais de diagnostico
+  sao descritivos e nao autorizam aumentar lote.
+
+Inicializacao com o Windows (opcional):
+Abra ATIVAR_INICIO_WINDOWS.bat. Ele cria um atalho do monitor na sua pasta
+Inicializar, sem administrador. Para desfazer, abra REMOVER_INICIO_WINDOWS.bat.
+Mantenha a pasta extraida no mesmo lugar. Inicia apos login; nao funciona com
+computador desligado, suspenso ou sem usuario conectado. O pacote nao ativa
+esse inicio automatico ate voce executar o arquivo correspondente.
+
+Se houver "Monitor ja esta aberto", use a janela existente. O JSON pronto
+fica em dados\ e pode ser copiado a qualquer momento.
+Se houver estado invalido, preserve a pasta e envie o erro para revisao.
