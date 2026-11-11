@@ -24,3 +24,6 @@ __pycache__/
 # Arquivos de imagem gerados dinamicamente
 *.png
 REPORTS/*.png
+
+# Estado privado do monitor local
+automation/dados/

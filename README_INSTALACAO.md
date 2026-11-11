@@ -147,3 +147,14 @@ Só avançamos para a Fase 2 quando isso for confirmado.
 Nova cópia experimental, seis padrões adicionais e 18 presets de alvo.
 Base existente preservada. Não compilada em MetaEditor nem validada em backtest nesta entrega.
 Consulte [instruções, modos e limites](docs/SCALP_HYPOTHESES_LAB.md).
+
+
+## Monitor local Node.js
+
+Com Node.js 18+ instalado, abra `automation/INICIAR_MONITOR.bat`. Sem npm install.
+Ele encontra CSVs do ALIEN em terminais normais, deduplica operacoes e atualiza
+um painel e `ENVIAR_AO_CHATGPT.json` a cada 30 segundos. Inicio com Windows e
+opcional e reversivel. Nao envia dados, opera, executa backtests ou altera o EA.
+Veja `automation/LEIA_PRIMEIRO.txt` para pastas portateis e limites das metricas.
+Verificado com `node --test tests/test_alien_monitor.mjs` no Linux; scripts Windows
+ainda precisam executar no notebook.
