@@ -158,3 +158,13 @@ opcional e reversivel. Nao envia dados, opera, executa backtests ou altera o EA.
 Veja `automation/LEIA_PRIMEIRO.txt` para pastas portateis e limites das metricas.
 Verificado com `node --test tests/test_alien_monitor.mjs` no Linux; scripts Windows
 ainda precisam executar no notebook.
+
+
+## Supervisor de perda flutuante da conta inteira (GOAT 5K)
+
+`ALIEN_SUPERVISOR_5K.mq5` acompanha operacoes manuais sem abrir trades.
+Padrao USD 5000: alerta em USD20; tentativa de zeragem de toda a conta em USD30,
+com trava persistente e novas tentativas em caso de falha.
+`ALIEN_V12_3_SCALP_SUPERVISOR.mq5` e uma copia experimental com o supervisor integrado.
+Nao equivale a garantia do teto de USD50. Compilacao MetaEditor e demo pendentes.
+Leia [instalacao, escopo e limites](docs/SUPERVISOR_5K.md).

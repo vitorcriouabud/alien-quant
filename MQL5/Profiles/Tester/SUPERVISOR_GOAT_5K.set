@@ -1,0 +1,7 @@
+; Supervisor de conta USD 5000; nao abre ordens
+AGEnable=true
+AGInitialBalance=5000.0
+AGFloatingLimitPercent=1.0
+AGSafetyBufferMoney=20.0
+AGWarningMoney=20.0
+AGDeviationPoints=25
