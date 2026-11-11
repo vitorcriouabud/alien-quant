@@ -140,3 +140,10 @@ Só avançamos para a Fase 2 quando isso for confirmado.
 ---
 
 *ALIEN LAB v1.0 | Fase 1 — Professor Observador*
+
+
+## Pesquisa de hipóteses de scalping (V12.2)
+
+Nova cópia experimental, seis padrões adicionais e 18 presets de alvo.
+Base existente preservada. Não compilada em MetaEditor nem validada em backtest nesta entrega.
+Consulte [instruções, modos e limites](docs/SCALP_HYPOTHESES_LAB.md).
