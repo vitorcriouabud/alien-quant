@@ -1,0 +1,8 @@
+{
+  "testTerminalDir": "C:\\ALIEN_TEST_MT5",
+  "symbol": "XAUUSD",
+  "from": "2026.10.01",
+  "to": "2026.11.01",
+  "commissionPerLot": 0,
+  "timeoutMinutes": 240
+}

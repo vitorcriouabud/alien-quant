@@ -27,3 +27,6 @@ REPORTS/*.png
 
 # Estado privado do monitor local
 automation/dados/
+
+# Resultados locais dos testes
+lab/resultados/

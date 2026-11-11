@@ -158,3 +158,8 @@ opcional e reversivel. Nao envia dados, opera, executa backtests ou altera o EA.
 Veja `automation/LEIA_PRIMEIRO.txt` para pastas portateis e limites das metricas.
 Verificado com `node --test tests/test_alien_monitor.mjs` no Linux; scripts Windows
 ainda precisam executar no notebook.
+
+
+## Comparacao automatizada de estrategias (Node.js)
+
+Abra lab/TESTE_INICIAL.bat no Windows com Node.js 18+ e MT5 portatil de testes em C:\ALIEN_TEST_MT5. Compila em pasta isolada, exige log/EX5 novos, executa referencia e uma hipotese; depois permite fila completa de 19 testes sequenciais. Sem operacoes reais, Python, API ou npm. Veja lab/LEIA_PRIMEIRO.txt. Geracao dos planos e parser testados; compilacao MetaEditor e backtests ainda pendentes no notebook.

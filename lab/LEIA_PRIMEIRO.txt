@@ -1,0 +1,73 @@
+ALIEN — COMPARACAO DE ESTRATEGIAS (NODE.JS, SEM NPM)
+
+PASSO DE AGORA: abrir TESTE_INICIAL.bat no notebook Windows.
+Esse arquivo tenta compilar a V12.2 e executar 2 backtests sequenciais:
+referencia original e hipotese 6 com alvo 1R. Nenhuma operacao real e solicitada.
+Quando terminar, abrir ENVIAR_RESULTADOS.bat e enviar o ZIP gerado nesta conversa.
+Se houver erro, o pacote tambem inclui ERRO.txt quando o plano foi criado.
+
+Requisitos existentes:
+- Node.js 18+ no PATH;
+- MT5 PORTATIL DE TESTES em C:\ALIEN_TEST_MT5, incluindo terminal64.exe,
+  metaeditor64.exe e MQL5\Include\Trade\Trade.mqh;
+- simbolo XAUUSD e dados disponiveis nesse terminal. Conexao de demonstracao
+  pode ser necessaria para baixar ticks reais. Nao enviar senha para esta conversa.
+
+Este pacote nao instala MT5, nao baixa programas, nao copia credenciais nem altera
+seu terminal normal. Se a instalacao de testes nao existir, ele para e informa o erro.
+Nao apontar para seu terminal operacional. O executor aceita apenas pasta portatil
+com nome ALIEN_TEST_MT5 ou ALIEN_RESEARCH_MT5, fora de Program Files/pasta normal de dados.
+Feche somente o terminal/editor dessa instalacao de TESTES antes de rodar a fila.
+Se o terminal estiver em outro caminho permitido, edite lab\configuracao.json.
+Nao e preciso instalar Python, API ou outra IA para executar estes testes.
+
+Configuracao:
+- XAUUSD M1, modelo 4 (ticks reais solicitados), deposito SIMULADO USD5000,
+  alavancagem simulada 1:20, execucao normal sem atraso aleatorio.
+- Periodo inicial: 01/10/2026 a 01/11/2026. Datas configuraveis em configuracao.json.
+- commissionPerLot=0 ainda NAO confirma os custos da corretora: informar o custo
+  round-trip por lote da conta usada. O campo alimenta o filtro do EA; a comissao
+  efetiva do Tester depende das especificacoes da corretora. Nao debitar duas vezes.
+- Lote fixo 0.01 e teto por trade 0.25%; stops distintos geram riscos realizados
+  diferentes. Nao e comparacao com risco exato igual nem teste de lote alto.
+- Limites de pesquisa: perda diaria 25, semanal 75, total 200 USD, risco monetario
+  por trade no maximo 12.50. Nao sao uma calibracao aprovada para conta da mesa.
+  Esses limites e filtros do motor podem reduzir muito a amostra ou bloquear entradas.
+- A versao pesquisada e a V12.2, sem o supervisor experimental V12.3. O objetivo
+  aqui e investigar entradas/saidas. Nunca instalar essa configuracao na conta real.
+
+Depois do teste inicial funcionar:
+- Abrir RODAR_TESTES.bat para a fila completa de 19 backtests, um por vez:
+  referencia original + 6 hipoteses x alvos 0.75R, 1R, 1.5R.
+- A referencia conserva a gestao original; os padroes novos usam saida fixa.
+  Comparacao com a referencia muda entrada e saida juntas. Comparacoes entre os
+  novos padroes usam o mesmo tipo de gestao.
+- CONFERIR_PLANO.bat apenas prepara SET/INI e nao inicia o terminal.
+
+O executor compila apenas na pasta de testes, exige EX5/log novos e resultado
+0 erros / 0 avisos. Preserva versoes anteriores. Desliga operacao automatica real
+no INI, solicita somente Strategy Tester, sem Cloud Network ou agentes remotos.
+Se o teste atingir 240 minutos, encerra apenas o processo filho que iniciou.
+Ctrl+C tambem encerra o processo filho de teste. Nao encerra o MT5 normal.
+
+O que enviar:
+ENVIAR_RESULTADOS.bat junta o ultimo diretorio de resultados em
+lab\ENVIAR_TESTES_ALIEN.zip: plano, parametros, compilacao, relatorios HTML e
+RESULTADOS.json quando existirem. HTML do MT5 pode conter identificacao da conta;
+revise o pacote antes de compartilhar. Configuracoes do terminal e senhas nao sao copiadas.
+
+Interpretacao:
+- PLANEJADO_NAO_EXECUTADO nao e resultado financeiro.
+- SEM_OPERACOES nao demonstra estrategia ruim: precisamos examinar os bloqueios.
+- RELATORIO_NAO_INTERPRETADO exige analisar HTML original, sem inventar metricas.
+- TESTE_EXECUTADO confirma apenas que ha operacoes no relatorio, nao qualidade
+  de ticks, custos corretos ou vantagem estatistica. Conferir tambem HTML original.
+- Modelo 4 solicitado nao garante cobertura completa dos ticks reais.
+- Resultados sao exploratorios. Outubro ja foi estudado no projeto; nao e periodo
+  cego nem prova independente. Depois de congelar a escolha, validar em dados
+  nao usados no desenvolvimento e em demo.
+
+Verificacoes desta entrega:
+Geracao das 19 combinacoes, INIs, SETs, validacao e leitura basica de HTML testadas
+com Node. Nenhuma compilacao MetaEditor ou execucao de backtest foi realizada aqui.
+A parte Windows/processos/MT5 ainda precisa executar no notebook.
