@@ -1,0 +1,41 @@
+name: ALIEN R4.1 Evidence and Safety Guards
+on:
+  push:
+    branches: ["feat/alien-genesis-r41-reteste-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_GENESIS_MTF_R41_DEMO.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R41_*.set"
+      - "tools/RODAR_R41_AB.ps1"
+      - "tools/Run-Backtest.ps1"
+      - "tests/test_alien_r41_static.py"
+      - ".github/workflows/alien-r41-static.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_GENESIS_MTF_R41_DEMO.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R41_*.set"
+      - "tools/RODAR_R41_AB.ps1"
+      - "tools/Run-Backtest.ps1"
+      - "tests/test_alien_r41_static.py"
+      - ".github/workflows/alien-r41-static.yml"
+permissions:
+  contents: read
+jobs:
+  static_guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s tests -p 'test_alien_r41_static.py' -v
+      - name: Validate PowerShell syntax (without launching MT5)
+        shell: pwsh
+        run: |
+          foreach ($file in @("tools/RODAR_R41_AB.ps1","tools/Run-Backtest.ps1")) {
+             $tokens = $null
+             $errors = $null
+             [System.Management.Automation.Language.Parser]::ParseFile(
+               (Resolve-Path $file).Path, [ref]$tokens,[ref]$errors
+             ) | Out-Null
+             if ($errors.Count -gt 0) {throw "$file parser errors: $errors"}
+          }
