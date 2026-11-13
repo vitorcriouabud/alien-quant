@@ -472,7 +472,13 @@ void CloseOwnPositions()
 void EnforceAccountProtection()
 {
    RefreshDay();
-   if(!EnableDailyGuard || g_dayLocked || g_dayEquityStart<=0) return;
+   if(!EnableDailyGuard || g_dayEquityStart<=0) return;
+   if(g_dayLocked)
+   {
+      // Em reinicio, tentar novamente fechar posicoes proprias ainda abertas.
+      if(CountOwnPositions()>0) CloseOwnPositions();
+      return;
+   }
    double equity=AccountInfoDouble(ACCOUNT_EQUITY);
    if(equity<=g_dayEquityStart*(1.0-DailyEquityLossPct/100.0))
    {
@@ -822,12 +828,24 @@ void OnDeinit(const int reason)
 
 void OnTick()
 {
-   EnforceAccountProtection();
-   ManagePositions();
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(),dt);
-   if(EnableWeekendGuard && dt.day_of_week==5 && dt.hour>=FridayCloseServerHour)
-      CloseOwnPositions();
+   // Bloqueio absoluto de toda acao de trading em conta REAL, inclusive
+   // fechamentos automaticos e modificacoes de SL/TP.
+   if(!IsDemoOrTester())
+   {
+      if(EnablePanel)
+         Comment("ALIEN GENESIS R4: CONTA REAL BLOQUEADA - SEM ORDENS");
+      return;
+   }
+   if(EnableDemoOrders)
+   {
+      EnforceAccountProtection();
+      ManagePositions();
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(),dt);
+      if(EnableWeekendGuard && dt.day_of_week==5 && dt.hour>=FridayCloseServerHour)
+         CloseOwnPositions();
+   }
+   else RefreshDay();
 
    datetime m5=iTime(_Symbol,PERIOD_M5,0);
    if(m5>0 && g_lastM5>0 && m5!=g_lastM5)
