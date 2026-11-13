@@ -680,8 +680,8 @@ int OnInit()
       FloatingSafetyUsd<=0 || FloatingSafetyUsd>40.0 ||
       DailyLossGuardPct<=0 || DailyLossGuardPct>1.0 ||
       TotalLossGuardPct<=0 || TotalLossGuardPct>8.0 ||
-      MaxLot<0.01 || MaxLot>0.02 ||
-      MaxDayTrades<1 || MaxDayTrades>200 ||
+      MaxLot<0.01 || MaxLot>0.05 ||
+      MaxDayTrades<1 || MaxDayTrades>1440 ||
       MaxOpenPositions<1 || MaxOpenPositions>5 ||
       StopLookbackBars<3 || StopLookbackBars>8 ||
       H1TrendLookback!=20 || M15EquilibriumBars!=12 ||
