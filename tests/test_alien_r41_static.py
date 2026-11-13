@@ -31,6 +31,22 @@ class R41StaticChecks(unittest.TestCase):
         self.assertEqual(a["EnableM1Retest"],"false")
         self.assertEqual(b["EnableM1Retest"],"true")
 
+    def test_string_preset_is_literal_and_not_optimizer_tuple(self):
+        # MQL5 string inputs: the || optimizer syntax becomes part of the string.
+        # That produced FileOpen error 5004 because Windows rejects '|'.
+        for filename in (A, B):
+            csv_lines = [line for line in filename.read_text(encoding="utf-8-sig").splitlines()
+                         if line.startswith("CSVFileName=")]
+            self.assertEqual(len(csv_lines), 1)
+            value = csv_lines[0].split("=", 1)[1]
+            self.assertTrue(value.endswith(".csv"))
+            self.assertNotIn("|", value)
+            self.assertNotIn("/", value)
+            self.assertNotIn("\\\\", value)
+        wrapper=(ROOT/"tools/RODAR_R41_AB.ps1").read_text(encoding="utf-8")
+        self.assertIn('$replace="CSVFileName="+$csvName', wrapper)
+        self.assertNotIn('+"||"+$csvName', wrapper)
+
     def test_defaults_match_frozen_input_sets(self):
         pattern=r'^\s*input\s+(bool|int|double|ulong|string)\s+([A-Za-z]\w*)\s*=\s*([^;]+);'
         source_inputs={name:val.strip().strip('"') for typ,name,val in re.findall(
