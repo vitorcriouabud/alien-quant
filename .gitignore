@@ -9,6 +9,7 @@
 *.csv
 results/
 temp/
+PACOTES_MT5/
 
 # Credenciais e arquivos de configuracao sensiveis
 *.ini
