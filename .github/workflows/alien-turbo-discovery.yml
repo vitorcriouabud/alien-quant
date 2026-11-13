@@ -29,7 +29,7 @@ jobs:
           python-version: "3.11"
       - name: Compile Python syntax
         run: python -m py_compile tools/audit_alien_turbo.py tests/test_alien_turbo_discovery.py
-      - name: Validate eight experimental presets + fake ZIP checksum
+      - name: Validate nine experimental presets + fake ZIP checksum
         run: python -m unittest discover -s tests -p 'test_alien_turbo_discovery.py' -v
       - name: Validate PowerShell parse (does not run actual MT5)
         shell: pwsh
