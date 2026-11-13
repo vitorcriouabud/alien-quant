@@ -69,11 +69,16 @@ def audit(path:Path)->dict:
         variants={}
         candidate_cohorts={}
         compiled_hashes=set()
+        # Resume ZIP adds _RETOMADO_TIMESTAMP without renaming original
+        # A-G/H-I report paths. Read the immutable original run prefix.
+        original_run=str(manifest.get("run_name") or Path(path).stem)
+        if not original_run.startswith("ALIEN_TURBO_DISCOVERY_"):
+            raise ValueError("invalid original run name")
         for row in manifest["experiments"]:
             label=row["variant"]
             if label not in VARIANTS or label in variants:
                 raise ValueError("unknown/duplicate variant "+label)
-            experiment_name=Path(path).stem+"_"+label
+            experiment_name=original_run+"_"+label
             ext={
                 "preset_sha256":one(z,experiment_name,".set"),
                 "trades_sha256":one(z,experiment_name+"_TRADES",".csv"),
