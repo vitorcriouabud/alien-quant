@@ -124,10 +124,19 @@ try {
     }
   }
   $testId=$name+"_"+$plan.id
+  # Nomes CURTOS dentro do sandbox do agente MT5 (previne
+  # erros de caminho excessivamente longo). No ZIP, os arquivos
+  # sao renomeados com identificadores completos para auditoria.
+  $shortStem="AT_"+$stamp+"_"+$plan.id
   $names=@{
-    CSVFileName=$testId+"_TRADES.csv"
-    TapeCSVFileName=$testId+"_CANDIDATES.csv"
-    OutcomeCSVFileName=$testId+"_OUTCOMES.csv"
+    CSVFileName=$shortStem+"_T.csv"
+    TapeCSVFileName=$shortStem+"_C.csv"
+    OutcomeCSVFileName=$shortStem+"_O.csv"
+  }
+  $archiveSuffix=@{
+    CSVFileName="_TRADES.csv"
+    TapeCSVFileName="_CANDIDATES.csv"
+    OutcomeCSVFileName="_OUTCOMES.csv"
   }
   $frozen=Join-Path $resultDir ($testId+".set")
   $updated=@($lines|ForEach-Object {
@@ -181,7 +190,8 @@ try {
     }
     $latest=$found|Sort-Object LastWriteTime -Descending|Select-Object -First 1
     if(-not $latest){throw "CSV nao encontrado: $filename"}
-    $file=Join-Path $resultDir $filename
+    $archiveName=$testId+$archiveSuffix[$key]
+    $file=Join-Path $resultDir $archiveName
     Copy-Item -LiteralPath $latest.FullName -Destination $file -Force
     if((Get-Item -LiteralPath $file).Length -lt 30){throw "CSV vazio: $filename"}
     $outputs[$key]=$file
@@ -213,6 +223,53 @@ try {
 } catch {
  $meta.failure=$_.Exception.Message
  Write-Warning "TURBO interrompido: $($meta.failure). Empacotando evidencias ja prontas."
+ # Salva a evidencia primaria mesmo quando o MT5 nao gera relatorio.
+ # Não confundir ausencia de HTML com estrategia sem trades.
+ $diag=Join-Path $resultDir "DIAGNOSTICO_FATAL.txt"
+ $report=@(
+  "ALIEN TURBO - DIAGNOSTICO DE FALHA",
+  ("Gerado em: "+(Get-Date).ToString("o")),
+  ("Stage: "+$plan.id),
+  ("Erro PowerShell: "+$meta.failure),
+  ("Source: "+$source),
+  ("MT5 isolate: "+$isolatedExe),
+  "OBS: zero resultados validados; buscar erro primario nos logs abaixo."
+ )
+ $candidateLogs=@()
+ $compileLog=Join-Path $env:TEMP "compile_ALIEN_GOAT5K_TURBO_DISCOVERY_TESTER.log"
+ if(Test-Path -LiteralPath $compileLog){
+   $candidateLogs+=@(Get-Item -LiteralPath $compileLog)
+ }
+ $logLocations=@(
+  (Join-Path $install "logs"),
+  (Join-Path $install "tester"),
+  (Join-Path $install "Tester"),
+  (Join-Path $env:APPDATA "MetaQuotes\Tester")
+ )
+ foreach($loc in $logLocations){
+  if(Test-Path -LiteralPath $loc){
+    $candidateLogs+=@(Get-ChildItem -LiteralPath $loc -Recurse -File -Filter "*.log" -ErrorAction SilentlyContinue |
+      Where-Object {$_.LastWriteTime -ge (Get-Date).AddHours(-2)})
+  }
+ }
+ $candidateLogs=@($candidateLogs|Sort-Object FullName -Unique|
+    Sort-Object LastWriteTime -Descending|Select-Object -First 12)
+ foreach($log in $candidateLogs){
+   $report+=("### LOG: "+$log.FullName)
+   try {
+     $tail=@(Get-Content -LiteralPath $log.FullName -Tail 170 -ErrorAction Stop)
+     # Recolhe apenas diagnosticos de EA/tester; mascarar possiveis IDs longos.
+     $tail=@($tail | ForEach-Object {
+       $_ -replace '(?<!\d)\d{8,}(?!\d)','[ID_OCULTO]'
+     })
+     $report+=$tail
+   }catch{$report+=("ERRO lendo log: "+$_.Exception.Message)}
+ }
+ if($candidateLogs.Count -eq 0){
+   $report+="SEM LOGS recentes. Verificar Diario do Agente em MT5."
+ }
+ [IO.File]::WriteAllLines($diag,[string[]]$report,[Text.Encoding]::UTF8)
+ Write-Host "Diagnostico preservado em $diag" -ForegroundColor Yellow
 } finally {
  if($expectedSHA){
   $ex5=[IO.Path]::ChangeExtension($source,".ex5")
