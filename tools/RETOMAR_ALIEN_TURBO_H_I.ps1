@@ -32,10 +32,11 @@ if(-not $ZipOriginal){
     if($null -eq $entry){continue}
     $read=New-Object IO.StreamReader($entry.Open())
     try{$item=$read.ReadToEnd()|ConvertFrom-Json}finally{$read.Dispose()}
-    if($item.schema -eq "ALIEN_TURBO_DISCOVERY_V1" -and
-       @($item.experiments).Count -eq 7 -and
-       @($item.experiments|Select-Object -ExpandProperty variant) -join ',' -eq
-       "A_BASE,B_FREQUENCY,C_ALLDAY,D_MULTI5,E_H1M15,F_M5SWEEP,G_M15FVG"){
+    $expectedLabels="A_BASE,B_FREQUENCY,C_ALLDAY,D_MULTI5,E_H1M15,F_M5SWEEP,G_M15FVG"
+    $actualLabels=(@($item.experiments | ForEach-Object {$_.variant}) -join ",")
+    if(($item.schema -eq "ALIEN_TURBO_DISCOVERY_V1") -and
+       (@($item.experiments).Count -eq 7) -and
+       ($actualLabels -ceq $expectedLabels)){
        $ZipOriginal=$candidate.FullName;break
     }
    }finally{$zipRead.Dispose()}
