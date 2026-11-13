@@ -274,7 +274,7 @@ try{
      shadow_ambiguous_m1=$ambiguous
   }
   $m.experiments+=@($entry)
-  Write-Host "$variant: orders=$filledCount, closes=$exitCount, M1 sinais=$($signalRows.Count)" -ForegroundColor Green
+  Write-Host "${variant}: orders=$filledCount, closes=$exitCount, M1 sinais=$($signalRows.Count)" -ForegroundColor Green
  }
  if(@($m.experiments).Count -ne 9){
    throw "Retomada incompleta: $(@($m.experiments).Count) de 9"
