@@ -49,6 +49,24 @@ class ABEvidence(unittest.TestCase):
         self.assertEqual(self.b["SpreadLimitPoints"],"45.0")
         self.assertEqual(self.a["MaxStopPoints"],"180.0")
 
+    def test_runner_compares_inputs_not_preset_comments(self):
+        runner = self.runner
+        # Regression: A and B preset headings differ but are not inputs.
+        self.assertIn(
+            '$_ -match "^[A-Za-z][A-Za-z0-9_]*="', runner)
+        self.assertIn(
+            '$_ -notmatch "^(RequireH1M15Context|CSVFileName)="', runner)
+        self.assertIn('Sort-Object)', runner)
+        self.assertIn('-CaseSensitive)', runner)
+        lines_a = A.read_text(encoding="utf-8").splitlines()
+        lines_b = B.read_text(encoding="utf-8").splitlines()
+        def normalize(lines):
+            return sorted(line.strip() for line in lines
+                          if re.match(r'^[A-Za-z][A-Za-z0-9_]*=', line)
+                          and not re.match(r'^(RequireH1M15Context|CSVFileName)=', line))
+        self.assertEqual(normalize(lines_a), normalize(lines_b))
+        self.assertNotEqual(lines_a[0], lines_b[0])
+
     def test_source_defaults_are_frozen(self):
         src=dict(re.findall(
             r'^\s*input\s+(?:bool|int|double|ulong|string)\s+(\w+)\s*=\s*([^;]+);',
