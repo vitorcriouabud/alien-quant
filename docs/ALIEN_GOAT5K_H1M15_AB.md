@@ -31,8 +31,8 @@ subconjunto dos trades A; comparar também o funil de vetos.
 O período 21/10–12/11 já foi usado para desenvolver, logo o A/B
 serve para conferência e diagnóstico, NÃO holdout independente.
 Após congelar, rodar um período não usado anteriormente,
-por exemplo 01/06–30/06/2026, SE houver ticks reais suficientes,
-antes de qualquer decisão de implantação.
+num periodo verificado como nao utilizado no desenvolvimento,
+antes de qualquer decisão de implantação. Os dados de 2025–2026 ja apareceram em outras rodadas, portanto NÃO presumir que junho/2026 seria uma amostra nova.
 
 ## Tester, não conta Goat
 As ordens existem exclusivamente no Strategy Tester isolado
