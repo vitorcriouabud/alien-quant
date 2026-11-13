@@ -1,0 +1,31 @@
+name: ALIEN Evidence Collector Tests
+
+on:
+  pull_request:
+    paths:
+      - "tools/collect_mt5_evidence.py"
+      - "tests/test_collect_mt5_evidence.py"
+      - ".github/workflows/evidence-collector-tests.yml"
+  push:
+    branches:
+      - "audit/smc-liquidity-evidence-20261113"
+    paths:
+      - "tools/collect_mt5_evidence.py"
+      - "tests/test_collect_mt5_evidence.py"
+      - ".github/workflows/evidence-collector-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-coletor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validar sintaxe
+        run: python -m py_compile tools/collect_mt5_evidence.py
+      - name: Testar ZIP, inventario e ausencia de dados
+        run: python -m unittest discover -s tests -p 'test_collect_mt5_evidence.py' -v
