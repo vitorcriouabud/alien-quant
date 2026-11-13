@@ -38,6 +38,14 @@ if (-not (Test-Path $ExpertPath)) { throw "Expert nao encontrado: $ExpertPath" }
 if (-not (Test-Path $terminal)) { throw "Terminal MT5 nao encontrado: $terminal" }
 if (-not (Test-Path $editor)) { throw "MetaEditor MT5 nao encontrado: $editor" }
 
+# Impedir corrida com testador portatil ja aberto: Start-Process poderia
+# retornar 0 sem iniciar o teste, e o relatorio ficaria ausente.
+$runningTesters = @(Get-Process terminal64 -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.Equals($terminal, [StringComparison]::OrdinalIgnoreCase) })
+if ($runningTesters.Count -gt 0) {
+    throw "O MT5 ALIEN isolado ja esta aberto (PID $($runningTesters[0].Id)). Feche SOMENTE o MT5 de teste e repita. O RoboForex principal pode continuar aberto."
+}
+
 Write-Host "=== ALIEN LAB TEST RUNNER ===" -ForegroundColor Cyan
 Write-Host "Ativo: $Symbol | TF: $Period | De: $FromDate Ate: $ToDate | Modelo: $Model | Deposito: $Deposit"
 
@@ -157,10 +165,35 @@ foreach ($p in $candPaths) {
 }
 
 if (-not $finalReport) {
-    Write-Host "AVISO: Relatorio nao encontrado nas pastas esperadas. Verificando logs..." -ForegroundColor Red
-    $logFile = Get-ChildItem -Path (Join-Path $dataRoot "logs") -Filter "*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($logFile) { Get-Content $logFile.FullName -Tail 20 | Write-Host }
-    exit 1
+    Write-Host "FALHA: Relatorio MT5 $ReportName nao foi gerado." -ForegroundColor Red
+    Write-Host "O erro principal costuma estar no DIARIO DO AGENTE, nao no log do terminal." -ForegroundColor Yellow
+    $logRoots = @(
+       (Join-Path $env:APPDATA "MetaQuotes\Tester"),
+       (Join-Path $install "tester"),
+       (Join-Path $install "logs")
+    )
+    $recent = @()
+    foreach ($root in $logRoots) {
+        if (-not (Test-Path $root)) { continue }
+        $recent += @(Get-ChildItem -LiteralPath $root -Filter "*.log" -File -Recurse -ErrorAction SilentlyContinue |
+                     Where-Object { $_.LastWriteTime -ge $start.AddMinutes(-1) })
+    }
+    $recent = @($recent | Sort-Object FullName -Unique |
+                         Sort-Object LastWriteTime -Descending | Select-Object -First 8)
+    if ($recent.Count -eq 0) {
+        Write-Host "Nenhum log novo do agente; possivel MT5 ja aberto ou teste nao iniciado." -ForegroundColor Red
+    }
+    foreach ($log in $recent) {
+        Write-Host ("--- AGENTE: " + $log.FullName + " ---") -ForegroundColor Cyan
+        $tail = @(Get-Content -LiteralPath $log.FullName -Tail 180 -ErrorAction SilentlyContinue)
+        $matches = @($tail | Select-String -Pattern "R41|ALIEN|5004|OnInit|expert|tester|failed|error|invalid|XAUUSD|stopped|pass finished" -CaseSensitive:$false)
+        if ($matches.Count -gt 0) {
+            $matches | Select-Object -Last 35 | ForEach-Object { Write-Host $_.Line }
+        } else {
+            $tail | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+        }
+    }
+    throw "Teste A/B interrompido. Copie as mensagens AGENTE acima para o ChatGPT (oculte numeros de conta). Nenhum resultado foi validado."
 }
 
 # Copiar relatorio e imagens para ALIEN_LAB\results
