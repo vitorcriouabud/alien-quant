@@ -785,6 +785,8 @@ void ShadowStart(bool fromRetest,const MqlRates &signalBar,const MqlTick &q)
 {
    if(!EnableShadowLab || g_shadowFile==INVALID_HANDLE ||
       g_setup.direction==0 || q.bid<=0 || q.ask<=q.bid) return;
+   // Entrada hipotetica somente APOS o fechamento do candle confirmador.
+   if((datetime)q.time < signalBar.time+PeriodSeconds(PERIOD_M1)) return;
    if(fromRetest)
    {
       if(g_setup.shadowRetSeen) return;
