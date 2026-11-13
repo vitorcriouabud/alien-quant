@@ -12,6 +12,7 @@ param(
     [string]$ReportName = "ALIEN_TEST",
     [string]$ExpId = "",
     [string]$StrategyName = "",
+    [string]$PresetPath = "", # Opcional: usar arquivo .set fixo para experimento controlado
     [string]$CsvPath = "C:\Users\notebook\.gemini\antigravity\scratch\ALIEN_LAB\EXPERIMENTOS.csv",
     [switch]$NoCsv = $false
 )
@@ -64,7 +65,14 @@ if (-not (Test-Path $setDir)) { New-Item -ItemType Directory -Path $setDir -Forc
 $setFile = Join-Path $setDir ($expertName + ".set")
 
 $repoSet = "C:\Users\notebook\.gemini\antigravity\scratch\ALIEN_LAB\MQL5\Profiles\Tester\$expertName.set"
-if (Test-Path $repoSet) {
+if ($PresetPath) {
+    if (-not (Test-Path -LiteralPath $PresetPath -PathType Leaf)) {
+        throw "Preset personalizado nao encontrado: $PresetPath"
+    }
+    $frozen = (Resolve-Path -LiteralPath $PresetPath).Path
+    Copy-Item -LiteralPath $frozen -Destination $setFile -Force
+    Write-Host "Preset congelado usado: $frozen" -ForegroundColor Green
+} elseif (Test-Path $repoSet) {
     Copy-Item $repoSet $setFile -Force
     Write-Host "Parametros .set sincronizados do repositorio: $repoSet" -ForegroundColor Green
 } elseif (-not (Test-Path $setFile)) {
