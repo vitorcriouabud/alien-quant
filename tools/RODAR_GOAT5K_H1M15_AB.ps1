@@ -22,19 +22,46 @@ $packDir=Join-Path $repo "PACOTES_MT5"
 $dir=Join-Path $repo ("results\ALIEN_H1M15_AB_"+$runTime)
 New-Item -ItemType Directory -Force -Path $packDir,$dir|Out-Null
 
-# Fecha somente MT5 de teste se necessario. NUNCA o terminal RoboForex principal.
-$isolated=@(Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" -ErrorAction SilentlyContinue|
- Where-Object {$_.ExecutablePath -and $_.ExecutablePath -ieq $terminal})
-foreach($process in $isolated){
- Write-Host "Encerrando somente MT5 ALIEN isolado PID $($process.ProcessId)" -ForegroundColor Yellow
- $p=Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
- if($null -ne $p){
-  if($p.MainWindowHandle -ne 0){[void]$p.CloseMainWindow()}
-  Start-Sleep -Seconds 2
-  $p=Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
-  if($null -ne $p){Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop}
+# Fecha exclusivamente o MT5 de TESTES antes de CADA fase A/B.
+# O runner base retorna depois do teste, mas pode deixar outro PID do
+# proprio terminal portatil aberto. Isso bloqueava o teste B.
+# NAO encerra processos por nome apenas: exige caminho do EXE exato.
+function Stop-IsolatedTestTerminal {
+ param([string]$Etapa)
+ $expected=[IO.Path]::GetFullPath($terminal)
+ $matches=@(Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" -ErrorAction SilentlyContinue |
+   Where-Object {
+     $_.ExecutablePath -and
+     ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq $expected)
+   })
+ foreach($item in $matches){
+   $testPid=[int]$item.ProcessId
+   Write-Host "MT5 isolado ainda aberto antes de $Etapa (PID $testPid). Encerrando apenas este..." -ForegroundColor Yellow
+   $p=Get-Process -Id $testPid -ErrorAction SilentlyContinue
+   if($null -eq $p){continue}
+   if($p.MainWindowHandle -ne 0){[void]$p.CloseMainWindow()}
+   $exited=$false
+   try{$exited=$p.WaitForExit(8000)}catch{$exited=$true}
+   if(-not $exited){
+     # Reconfirma o caminho do EXE no instante do fechamento forcado.
+     $current=Get-CimInstance Win32_Process -Filter ("ProcessId="+$testPid) -ErrorAction SilentlyContinue
+     if($null -ne $current -and $current.ExecutablePath -and
+       ([IO.Path]::GetFullPath($current.ExecutablePath) -ieq $expected)){
+        Stop-Process -Id $testPid -Force -ErrorAction Stop
+     }
+   }
+ }
+ Start-Sleep -Seconds 1
+ $remaining=@(Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" -ErrorAction SilentlyContinue |
+   Where-Object {
+      $_.ExecutablePath -and
+      ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq $expected)
+   })
+ if($remaining.Count -gt 0){
+   throw "Terminal ISOLADO permaneceu aberto antes de $Etapa. Nenhum outro terminal foi tocado."
  }
 }
+
 $plans=@(
  @{label="A_BASE"; preset="ALIEN_GOAT5K_H1M15_A_BASE.set"; context="false"},
  @{label="B_CONTEXT"; preset="ALIEN_GOAT5K_H1M15_B_CONTEXT.set"; context="true"}
@@ -56,6 +83,7 @@ $manifest=[ordered]@{
 $firstExeHash=""
 $baseNormalized=$null
 foreach($plan in $plans){
+ Stop-IsolatedTestTerminal -Etapa $plan.label
  $originalSet=Join-Path $sets $plan.preset
  if(-not(Test-Path -LiteralPath $originalSet)){throw "Preset ausente: $originalSet"}
  $name="ALIEN_H1M15_"+$plan.label+"_"+$runTime
