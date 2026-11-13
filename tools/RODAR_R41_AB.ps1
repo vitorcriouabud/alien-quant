@@ -26,6 +26,8 @@ $experiments=@(
   @{tag="B_RETESTE"; preset=(Join-Path $preDir "ALIEN_R41_B_RETESTE.set")}
 )
 $rows=@()
+$knownSourceSha=""
+$knownExeSha=""
 foreach($exp in $experiments) {
   if (-not (Test-Path -LiteralPath $exp.preset)) { throw "Preset ausente: $($exp.preset)" }
   $name="ALIEN_R41_"+$exp.tag+"_"+$stamp
@@ -42,9 +44,24 @@ foreach($exp in $experiments) {
     FromDate=$FromDate; ToDate=$ToDate; Deposit=$Deposit;
     Leverage=$Leverage; ReportName=$name; ExpId=$name;
     StrategyName=("ALIEN_R41_"+$exp.tag);
-    PresetPath=$workingSet; NoCsv=$true
+    PresetPath=$workingSet; NoCsv=$true;
+    SkipCompile=($exp.tag -eq "B_RETESTE")
   }
   & $runner @parameters
+  $ex5=[IO.Path]::ChangeExtension($source,".ex5")
+  if (-not (Test-Path -LiteralPath $ex5 -PathType Leaf)) {
+    throw "EX5 nao existe apos compilar: $ex5"
+  }
+  $sourceSha=(Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+  $exeSha=(Get-FileHash -LiteralPath $ex5 -Algorithm SHA256).Hash
+  if ($knownSourceSha -ne "" -and $sourceSha -ne $knownSourceSha) {
+    throw "Codigo MQ5 mudou entre A e B. Comparacao invalida."
+  }
+  if ($knownExeSha -ne "" -and $exeSha -ne $knownExeSha) {
+    throw "EX5 diferente entre A e B. Comparacao invalida."
+  }
+  $knownSourceSha=$sourceSha
+  $knownExeSha=$exeSha
   $reportCandidates=@(
     (Join-Path "C:\ALIEN_TEST_MT5" ($name+".htm")),
     (Join-Path "C:\ALIEN_TEST_MT5" ($name+".html")),
@@ -79,7 +96,7 @@ foreach($exp in $experiments) {
   $rows+=@{
      experiment=$name; mode=$exp.tag; model=4;
      interval=($FromDate+" - "+$ToDate);
-     source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;
+     source_sha256=$sourceSha; ex5_sha256=$exeSha;
      preset_sha256=(Get-FileHash $workingSet -Algorithm SHA256).Hash;
      report_sha256=(Get-FileHash $copyReport -Algorithm SHA256).Hash;
      csv_present=($copiedCsv -ne "");
