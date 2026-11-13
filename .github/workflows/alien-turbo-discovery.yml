@@ -1,0 +1,43 @@
+name: ALIEN GOAT5K TURBO Discovery Research
+on:
+  push:
+    branches: ["feat/alien-goat5k-turbo-discovery-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_GOAT5K_TURBO_DISCOVERY_TESTER.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_TURBO_*.set"
+      - "tools/RODAR_ALIEN_TURBO_DISCOVERY.ps1"
+      - "tools/audit_alien_turbo.py"
+      - "tests/test_alien_turbo_discovery.py"
+      - ".github/workflows/alien-turbo-discovery.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_GOAT5K_TURBO_DISCOVERY_TESTER.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_TURBO_*.set"
+      - "tools/RODAR_ALIEN_TURBO_DISCOVERY.ps1"
+      - "tools/audit_alien_turbo.py"
+      - "tests/test_alien_turbo_discovery.py"
+      - ".github/workflows/alien-turbo-discovery.yml"
+permissions:
+  contents: read
+jobs:
+  static-and-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python syntax
+        run: python -m py_compile tools/audit_alien_turbo.py tests/test_alien_turbo_discovery.py
+      - name: Validate nine experimental presets + fake ZIP checksum
+        run: python -m unittest discover -s tests -p 'test_alien_turbo_discovery.py' -v
+      - name: Validate PowerShell parse (does not run actual MT5)
+        shell: pwsh
+        run: |
+          $tok=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/RODAR_ALIEN_TURBO_DISCOVERY.ps1").Path,
+            [ref]$tok,[ref]$errors
+          )|Out-Null
+          if($errors.Count -gt 0){throw "$errors"}
