@@ -39,6 +39,8 @@ class R41StaticChecks(unittest.TestCase):
         self.assertEqual(set(b),set(source_inputs))
         self.assertEqual(source_inputs["EnableM1Retest"],"true")
         for key in source_inputs:
+            if key == "CSVFileName":
+                continue  # Nome exclusivo por cenario para nao misturar os logs
             self.assertEqual(b[key],source_inputs[key],key)
 
     def test_no_trade_on_real(self):
