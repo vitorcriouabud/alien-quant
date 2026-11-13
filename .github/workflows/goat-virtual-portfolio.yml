@@ -1,0 +1,30 @@
+name: ALIEN GOAT5K Virtual Portfolio Tests
+
+on:
+  push:
+    branches: ["feat/alien-goat5k-virtual-risk-20261113"]
+    paths:
+      - "tools/goat_virtual_portfolio.py"
+      - "tests/test_goat_virtual_portfolio.py"
+      - ".github/workflows/goat-virtual-portfolio.yml"
+  pull_request:
+    paths:
+      - "tools/goat_virtual_portfolio.py"
+      - "tests/test_goat_virtual_portfolio.py"
+      - ".github/workflows/goat-virtual-portfolio.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-risk-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile syntax
+        run: python -m py_compile tools/goat_virtual_portfolio.py tests/test_goat_virtual_portfolio.py
+      - name: Test virtual risk portfolio with synthetic quotes
+        run: python -m unittest discover -s tests -p 'test_goat_virtual_portfolio.py' -v
