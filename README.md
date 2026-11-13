@@ -28,3 +28,7 @@
 6. Abrir PR para implementar mudancas de estrategia; nao mexer em versoes preservadas.
 
 **Privacidade:** este repositorio e publico. O coletor nao faz upload automatico de arquivos de conta/corretora.
+
+## Auditoria automatica de evidencias MT5
+
+Execute `tools/COLETAR_E_ANALISAR_MT5.cmd` no Windows com Python 3 instalado. O programa coleta CSV e HTML de backtest, confere SHA256, gera resumo HTML/Markdown/JSON/CSV e identifica divergencias de resultados em `RELATORIOS_MT5/`. Nao realiza ordens ou upload. Consulte [`docs/ANALISE_AUTOMATICA_MT5.md`](docs/ANALISE_AUTOMATICA_MT5.md). Relatorios brutos e pacotes nao devem ser publicados no repositorio publico.
