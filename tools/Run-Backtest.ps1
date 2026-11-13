@@ -22,9 +22,13 @@ $ErrorActionPreference = "Stop"
 # Backtests rodam SEMPRE na instalacao PORTATIL isolada (C:\ALIEN_TEST_MT5), nunca no MT5 ao vivo.
 # (ShutdownTerminal=1 neste script fechava o MT5 de operacao real.)
 $liveInstall = "C:\Program Files\RoboForex MT5 Terminal"
-$install = "C:\ALIEN_TEST_MT5"
+$install = if (Test-Path "C:\ALIEN_TEST_MT5\terminal64.exe") {
+    "C:\ALIEN_TEST_MT5"
+} else {
+    Join-Path $env:LOCALAPPDATA "ALIEN_TEST_MT5"
+}
 if (-not (Test-Path (Join-Path $install "terminal64.exe"))) {
-    throw "Instalacao de testes isolada nao encontrada em $install. Rode tools\make_test_mt5.py primeiro (nao use o MT5 ao vivo para backtest)."
+    throw "MT5 de teste nao encontrado em $install. Execute tools\CRIAR_MT5_TESTE_SEGURO.ps1. Nao use o MT5 de conta real."
 }
 $terminal = Join-Path $install "terminal64.exe"
 $editor = Join-Path $liveInstall "metaeditor64.exe"   # so compila; nao mexe no terminal ao vivo
