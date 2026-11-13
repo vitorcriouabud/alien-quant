@@ -68,5 +68,5 @@ DailyEquityLossPct=2.0||2.0||0||2.0||N
 SessionStartServerHour=7||7||0||7||N
 SessionEndServerHour=20||20||0||20||N
 FridayCloseServerHour=20||20||0||20||N
-CSVFileName=ALIEN_R41_B_RETESTE.csv||ALIEN_R41_B_RETESTE.csv||0||ALIEN_R41_B_RETESTE.csv||N
+CSVFileName=ALIEN_R41_B_RETESTE.csv
 ShowChartArrows=true||true||0||true||N
