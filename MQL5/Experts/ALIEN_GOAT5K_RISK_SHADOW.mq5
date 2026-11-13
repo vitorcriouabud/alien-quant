@@ -943,6 +943,13 @@ bool ConfirmedLocalPivot(const MqlRates &signalBar,int dir,
 // Calcula flags sem afrouxar filtros para a candidata local.
 void RecordShadowVariant(ShadowCandidate &c)
 {
+   // Invalid variant must not inherit risk flags from the preceding M5 row.
+   c.goatWorstLossUsd=0.0;
+   c.goatExistingFloatingLossUsd=GoatCombinedNegativeFloatingUsd();
+   c.goatSingleRiskOk=false;
+   c.goatFloatingHeadroomOk=false;
+   c.goatDailyFloorOk=false;
+   c.goatStaticFloorOk=false;
    c.stopPts=MathAbs(c.entry-c.stop)/_Point;
    c.stopOK=(c.stopPts>=MinimumStopPoints && c.stopPts<=MaximumStopPoints);
    c.spreadOK=(c.spreadPts<=MaximumSpreadPoints);
