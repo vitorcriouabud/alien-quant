@@ -1,0 +1,28 @@
+name: ALIEN MTF Observer Static Checks
+on:
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_MTF_CASCATA_OBSERVADOR_V1.mq5"
+      - "tests/test_mtf_cascata_static.py"
+      - ".github/workflows/mtf-observer-static.yml"
+  push:
+    branches:
+      - "feat/mtf-cascata-observador-20261113"
+    paths:
+      - "MQL5/Experts/ALIEN_MTF_CASCATA_OBSERVADOR_V1.mq5"
+      - "tests/test_mtf_cascata_static.py"
+      - ".github/workflows/mtf-observer-static.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate MTF research invariants
+        run: python -m unittest discover -s tests -p 'test_mtf_cascata_static.py' -v
