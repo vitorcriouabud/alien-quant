@@ -1,0 +1,43 @@
+name: ALIEN GOAT5K H1 M15 A-B Tester
+on:
+  push:
+    branches: ["feat/alien-goat5k-h1m15-ab-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_GOAT5K_H1M15_AB_TESTER.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_GOAT5K_H1M15_*.set"
+      - "tools/RODAR_GOAT5K_H1M15_AB.ps1"
+      - "tools/audit_goat_h1m15_ab.py"
+      - "tests/test_goat_h1m15_ab.py"
+      - ".github/workflows/alien-goat5k-h1m15-ab.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_GOAT5K_H1M15_AB_TESTER.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_GOAT5K_H1M15_*.set"
+      - "tools/RODAR_GOAT5K_H1M15_AB.ps1"
+      - "tools/audit_goat_h1m15_ab.py"
+      - "tests/test_goat_h1m15_ab.py"
+      - ".github/workflows/alien-goat5k-h1m15-ab.yml"
+permissions:
+  contents: read
+jobs:
+  static-guard-and-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python syntax
+        run: python -m py_compile tools/audit_goat_h1m15_ab.py tests/test_goat_h1m15_ab.py
+      - name: Ensure single A-B hypothesis and correct CSV hashes
+        run: python -m unittest discover -s tests -p 'test_goat_h1m15_ab.py' -v
+      - name: Parse PowerShell (does not execute MT5)
+        shell: pwsh
+        run: |
+          $tok=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/RODAR_GOAT5K_H1M15_AB.ps1").Path,
+            [ref]$tok,[ref]$errors
+          )|Out-Null
+          if($errors.Count -gt 0){throw "$errors"}
