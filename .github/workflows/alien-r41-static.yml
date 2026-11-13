@@ -7,6 +7,7 @@ on:
       - "MQL5/Profiles/Tester/ALIEN_R41_*.set"
       - "tools/RODAR_R41_AB.ps1"
       - "tools/Run-Backtest.ps1"
+      - "tools/CRIAR_MT5_TESTE_SEGURO.ps1"
       - "tests/test_alien_r41_static.py"
       - ".github/workflows/alien-r41-static.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
       - "MQL5/Profiles/Tester/ALIEN_R41_*.set"
       - "tools/RODAR_R41_AB.ps1"
       - "tools/Run-Backtest.ps1"
+      - "tools/CRIAR_MT5_TESTE_SEGURO.ps1"
       - "tests/test_alien_r41_static.py"
       - ".github/workflows/alien-r41-static.yml"
 permissions:
@@ -31,7 +33,7 @@ jobs:
       - name: Validate PowerShell syntax (without launching MT5)
         shell: pwsh
         run: |
-          foreach ($file in @("tools/RODAR_R41_AB.ps1","tools/Run-Backtest.ps1")) {
+          foreach ($file in @("tools/RODAR_R41_AB.ps1","tools/Run-Backtest.ps1","tools/CRIAR_MT5_TESTE_SEGURO.ps1")) {
              $tokens = $null
              $errors = $null
              [System.Management.Automation.Language.Parser]::ParseFile(
