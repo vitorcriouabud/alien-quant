@@ -14,7 +14,8 @@ param(
     [string]$StrategyName = "",
     [string]$PresetPath = "", # Opcional: usar arquivo .set fixo para experimento controlado
     [string]$CsvPath = "C:\Users\notebook\.gemini\antigravity\scratch\ALIEN_LAB\EXPERIMENTOS.csv",
-    [switch]$NoCsv = $false
+    [switch]$NoCsv = $false,
+    [switch]$SkipCompile = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -43,6 +44,7 @@ $expertName = [System.IO.Path]::GetFileNameWithoutExtension($ExpertPath)
 $targetEx5 = Join-Path $testDir ($expertName + ".ex5")
 $compileLog = Join-Path $env:TEMP "compile_$expertName.log"
 
+if (-not $SkipCompile) {
 Write-Host "Compilando $expertName..." -ForegroundColor Yellow
 $procComp = Start-Process -FilePath $editor -ArgumentList "/compile:`"$ExpertPath`" /log:`"$compileLog`"" -Wait -PassThru
 if (-not (Test-Path $compileLog)) { throw "MetaEditor nao gerou log." }
@@ -53,10 +55,16 @@ if ($logContent -notmatch "(?:Result|Resultado)\s*:\s*0\s+(?:errors?|erros?)") {
 }
 Write-Host "Compilacao OK (0 erros)." -ForegroundColor Green
 
+} else {
+    Write-Host "Usando EX5 congelado sem recompilar: $expertName" -ForegroundColor Cyan
+}
+
 # Se a compilacao foi gerada na pasta de origem, mover/copiar para ALIEN_LAB_EXCLUSIVO_TESTADOR
 $originEx5 = [System.IO.Path]::ChangeExtension($ExpertPath, ".ex5")
 if (Test-Path $originEx5) {
     Copy-Item $originEx5 $targetEx5 -Force
+} else {
+    throw "EX5 de origem ausente: $originEx5. Nao executar usando binario antigo."
 }
 
 # 2. Sincronizar .set do repositorio ou criar padrao
