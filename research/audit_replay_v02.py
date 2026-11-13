@@ -203,7 +203,7 @@ def audit(path, r_col=None, time_col=None, id_col=None, expected=None):
         peak = max(peak, equity)
         max_dd = max(max_dd, peak - equity)
     sorted_r = sorted(values)
-    best3 = sum(sorted_r[-3:])
+    best3 = sum(sorted((x for x in values if x > 0), reverse=True)[:3])
     ci = bootstrap_by_day(dates)
     result = {
         "status": "TRIAGEM_HISTORICA_NAO_PROMOVER",
