@@ -36,9 +36,9 @@ class TurboTests(unittest.TestCase):
         cls.profiles={key:read_inputs(ROOT/f"MQL5/Profiles/Tester/ALIEN_TURBO_{key}.set")
                       for key in VARIANTS}
 
-    def test_all_eight_variants_present(self):
-        self.assertEqual(len(self.profiles),8)
-        self.assertEqual(len(VARIANTS),8)
+    def test_all_nine_variants_present(self):
+        self.assertEqual(len(self.profiles),9)
+        self.assertEqual(len(VARIANTS),9)
         base=self.profiles["A_BASE"]
         self.assertEqual(base["MaxDayTrades"],"6")
         self.assertEqual(base["CooldownMinutes"],"30")
@@ -50,24 +50,27 @@ class TurboTests(unittest.TestCase):
     def test_expected_incremental_differences_only(self):
         expected={
            "A_BASE":{},
-           "B_FREQUENCY":{"MaxDayTrades":"200","CooldownMinutes":"0"},
-           "C_ALLDAY":{"MaxDayTrades":"200","CooldownMinutes":"0",
+           "B_FREQUENCY":{"MaxDayTrades":"1440","CooldownMinutes":"0"},
+           "C_ALLDAY":{"MaxDayTrades":"1440","CooldownMinutes":"0",
                        "StartServerHour":"0","EndServerHour":"24"},
-           "D_MULTI5":{"MaxDayTrades":"200","CooldownMinutes":"0",
+           "D_MULTI5":{"MaxDayTrades":"1440","CooldownMinutes":"0",
                        "StartServerHour":"0","EndServerHour":"24",
                        "MaxOpenPositions":"5"},
-           "E_H1M15":{"MaxDayTrades":"200","CooldownMinutes":"0",
+           "E_H1M15":{"MaxDayTrades":"1440","CooldownMinutes":"0",
                        "StartServerHour":"0","EndServerHour":"24",
                        "MaxOpenPositions":"5","RequireH1M15Context":"true"},
-           "F_M5SWEEP":{"MaxDayTrades":"200","CooldownMinutes":"0",
+           "F_M5SWEEP":{"MaxDayTrades":"1440","CooldownMinutes":"0",
                        "StartServerHour":"0","EndServerHour":"24",
                        "MaxOpenPositions":"5","RequireM5ClosedSweep":"true"},
-           "G_M15FVG":{"MaxDayTrades":"200","CooldownMinutes":"0",
+           "G_M15FVG":{"MaxDayTrades":"1440","CooldownMinutes":"0",
                        "StartServerHour":"0","EndServerHour":"24",
                        "MaxOpenPositions":"5","RequireM15ClosedFVG":"true"},
-           "H_RR3":{"MaxDayTrades":"200","CooldownMinutes":"0",
+           "H_RR3":{"MaxDayTrades":"1440","CooldownMinutes":"0",
                        "StartServerHour":"0","EndServerHour":"24",
                        "MaxOpenPositions":"5","RewardRisk":"3.0"},
+           "I_RISKSIZED":{"MaxDayTrades":"1440","CooldownMinutes":"0",
+                       "StartServerHour":"0","EndServerHour":"24",
+                       "MaxOpenPositions":"5","MaxLot":"0.05"},
         }
         b=self.profiles["A_BASE"]
         for key,inputs in self.profiles.items():
@@ -152,8 +155,9 @@ class TurboTests(unittest.TestCase):
             "if(MQLInfoInteger(MQL_TESTER)==0 || !EnableTesterOrders ||",
             "if(MQLInfoInteger(MQL_TESTER)==0)return;",
             "MathAbs(AccountInfoDouble(ACCOUNT_BALANCE)-5000.0)>0.01",
-            "MaxDayTrades>200",
+            "MaxDayTrades>1440",
             "MaxOpenPositions>5",
+            "MaxLot>0.05",
             "RiskMaxUsd>12.50",
             "RiskLimitPct>0.25",
             "TotalLossGuardPct>8.0",
