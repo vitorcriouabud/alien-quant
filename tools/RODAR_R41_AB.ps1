@@ -48,7 +48,7 @@ foreach($exp in $experiments) {
   $csvName=$name+".csv"
   $workingSet=Join-Path $dest ($name+".set")
   $lines=Get-Content -LiteralPath $exp.preset -Encoding UTF8
-  $replace="CSVFileName="+$csvName+"||"+$csvName+"||0||"+$csvName+"||N"
+  $replace="CSVFileName="+$csvName # input string nao usa campos || de otimizacao no .set
   $changed=@($lines | ForEach-Object { if($_ -match '^CSVFileName=') {$replace} else {$_} })
   [System.IO.File]::WriteAllLines($workingSet,[string[]]$changed,[System.Text.Encoding]::ASCII)
   $start=Get-Date
