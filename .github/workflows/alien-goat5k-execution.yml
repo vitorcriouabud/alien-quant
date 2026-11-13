@@ -1,0 +1,41 @@
+name: ALIEN GOAT5K Tester Execution Safety
+
+on:
+  push:
+    branches: ["feat/alien-goat5k-execution-tester-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_GOAT5K_EXECUTION_TESTER.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_GOAT5K_EXECUTION_TESTER.set"
+      - "tools/RODAR_GOAT5K_EXECUTION_TESTER.ps1"
+      - "tests/test_goat5k_execution_tester.py"
+      - ".github/workflows/alien-goat5k-execution.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_GOAT5K_EXECUTION_TESTER.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_GOAT5K_EXECUTION_TESTER.set"
+      - "tools/RODAR_GOAT5K_EXECUTION_TESTER.ps1"
+      - "tests/test_goat5k_execution_tester.py"
+      - ".github/workflows/alien-goat5k-execution.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  static-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Verify tester-only and risk limits
+        run: python -m unittest discover -s tests -p 'test_goat5k_execution_tester.py' -v
+      - name: Parse PowerShell; does not execute MT5
+        shell: pwsh
+        run: |
+          $tok = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/RODAR_GOAT5K_EXECUTION_TESTER.ps1").Path,
+            [ref]$tok,[ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw "$errors" }
