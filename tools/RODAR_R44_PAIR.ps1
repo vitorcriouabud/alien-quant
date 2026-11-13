@@ -23,6 +23,25 @@ $testInstall=if(Test-Path "C:\ALIEN_TEST_MT5\terminal64.exe"){
 if(-not (Test-Path (Join-Path $testInstall "terminal64.exe"))){
  throw "MT5 isolado nao encontrado. Este script nao usa a instalacao de operacao."
 }
+# Evitar o erro "terminal process already started" sem tocar no RoboForex real.
+# Somente um executavel com caminho IDENTICO ao MT5 isolado pode ser fechado.
+$isolatedExe=Join-Path $testInstall "terminal64.exe"
+$isolatedProcs=@(Get-CimInstance Win32_Process -Filter "Name='terminal64.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -and $_.ExecutablePath -ieq $isolatedExe })
+foreach($item in $isolatedProcs) {
+   Write-Host "Fechando somente terminal ALIEN de TESTES PID $($item.ProcessId)..." -ForegroundColor Yellow
+   $p=Get-Process -Id $item.ProcessId -ErrorAction SilentlyContinue
+   if($null -ne $p) {
+      if($p.MainWindowHandle -ne 0) { [void]$p.CloseMainWindow() }
+      Start-Sleep -Seconds 2
+      $p=Get-Process -Id $item.ProcessId -ErrorAction SilentlyContinue
+      if($null -ne $p) {
+         Write-Warning "Terminal isolado nao encerrou sozinho. Forcando fechamento apenas do teste."
+         Stop-Process -Id $item.ProcessId -Force -ErrorAction Stop
+      }
+   }
+}
+
 $stamp=Get-Date -Format "yyyyMMdd_HHmmss"
 $name="ALIEN_R44_PAIR_"+$stamp
 $dest=Join-Path $repo ("results\"+$name)
