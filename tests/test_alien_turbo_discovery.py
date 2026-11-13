@@ -96,11 +96,12 @@ class TurboTests(unittest.TestCase):
                 ("RiskLimitPct","0.25"),
                 ("RiskMaxUsd","12.50"),
                 ("FloatingSafetyUsd","35.0"),
-                ("MaxLot","0.02"),
                 ("EnableSignalTape","true"),
                 ("EnableM1ShadowOutcomes","true"),
             ):
                 self.assertEqual(inputs[k],v,id)
+            self.assertEqual(inputs["MaxLot"],
+                             "0.05" if id=="I_RISKSIZED" else "0.02",id)
 
     def test_tape_sees_signals_before_execution_limits(self):
         s=self.source
