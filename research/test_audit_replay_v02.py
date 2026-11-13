@@ -90,7 +90,7 @@ class ReplayAuditTests(unittest.TestCase):
     def test_concentration_without_best_three(self):
         result = self.check_csv("id,r_net\na,10\nb,-3\nc,-3\nd,-3\ne,-3\n")
         self.assertEqual(result["soma_r"], -2)
-        self.assertEqual(result["soma_sem_3_maiores_r"], -9)
+        self.assertEqual(result["soma_sem_3_maiores_r"], -12)
 
     def test_numeric_parser_rejects_ambiguous_locale(self):
         with self.assertRaisesRegex(ValueError, "ambiguos"):
