@@ -2,7 +2,7 @@
 """ALIEN TURBO Discovery ZIP auditor: primary MT5 tester deals vs M1 shadow approximations.
 
 - Verifies SHA256 for each archived HTML/CSV/SET and compiled EX5+source
-- Compares all 8 policies; counts raw M1 signal cohort independent of execution
+- Compares all 9 policies; counts raw M1 signal cohort independent of execution
 - Counts M1 OHLC approximate outcomes separately, preserving BOTH-HIT ambiguity
 - No claims of live Goat fills, robust out-of-sample edge, or risk compliance
 """
@@ -19,7 +19,7 @@ from zipfile import ZipFile
 
 VARIANTS=(
     "A_BASE","B_FREQUENCY","C_ALLDAY","D_MULTI5",
-    "E_H1M15","F_M5SWEEP","G_M15FVG","H_RR3",
+    "E_H1M15","F_M5SWEEP","G_M15FVG","H_RR3","I_RISKSIZED",
 )
 D=lambda x:Decimal(str(x))
 
@@ -183,7 +183,7 @@ def audit(path:Path)->dict:
                 }
         return {
             "schema":"ALIEN_TURBO_DISCOVERY_AUDIT_V1",
-            "status":"COMPLETE" if manifest.get("success") and len(variants)==8 else "PARTIAL",
+            "status":"COMPLETE" if manifest.get("success") and len(variants)==9 else "PARTIAL",
             "failure_if_partial":manifest.get("failure",""),
             "verified_primary_file_hashes":True,
             "same_compiled_ex5_hash":True,
