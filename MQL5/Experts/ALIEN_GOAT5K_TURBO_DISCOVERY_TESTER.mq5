@@ -86,6 +86,7 @@ int g_dayKey=-1;
 int g_dayTrades=0;
 double g_dayReference=0.0;
 bool g_locked=false;
+bool g_totalLocked=false; // perda total trava permanentemente no testador
 int g_signals=0,g_attempts=0,g_entries=0,g_dealsOut=0,g_vetoes=0;
 
 void LogRow(string action,string reason,int dir=0,
@@ -214,21 +215,25 @@ void RiskProtection()
       g_dayTrades=0;
       g_dayReference=MathMax(AccountInfoDouble(ACCOUNT_BALANCE),
                               AccountInfoDouble(ACCOUNT_EQUITY));
-      LogRow("DAY_RESET","server calendar day, not Goat 5pm EST reset");
+      if(!g_totalLocked)g_locked=false; // daily lock libera no dia seguinte
+      LogRow("DAY_RESET","server calendar day, NAO Goat 5pm EST reset");
    }
-   double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
    double balance=AccountInfoDouble(ACCOUNT_BALANCE);
    double dailyFloor=g_dayReference*(1.0-DailyLossGuardPct/100.0);
    double totalFloor=InitialDepositUsd*(1.0-TotalLossGuardPct/100.0);
-   if(eq<=dailyFloor || balance<=dailyFloor ||
-      eq<=totalFloor || balance<=totalFloor ||
-      NegativeFloating()>=FloatingSafetyUsd ||
-      ActiveWorstStopExposureUsd()>=FloatingSafetyUsd)
+   bool breachTotal=(equity<=totalFloor || balance<=totalFloor);
+   bool breachDaily=(equity<=dailyFloor || balance<=dailyFloor);
+   bool breachFloating=(NegativeFloating()>=FloatingSafetyUsd ||
+                        ActiveWorstStopExposureUsd()>=FloatingSafetyUsd);
+   if(breachTotal || breachDaily || breachFloating)
    {
+      if(breachTotal)g_totalLocked=true;
       if(!g_locked)
-         LogRow("RISK_LOCK","floating, daily or total preventive stop");
+         LogRow(breachTotal?"LOCK_TOTAL":"LOCK_DAY",
+                "preventive equity/floating circuit breaker tester only");
       g_locked=true;
-      CloseOwn("TESTER risk lock");
+      CloseOwn("TESTER preventive risk lock");
    }
 }
 
