@@ -43,6 +43,8 @@ input int    M15EquilibriumBars=12;     // meio do range M15 fechado
 input group "=== TURBO: INVESTIGAR TODAS AS OPORTUNIDADES ==="
 input bool   EnableSignalTape=true;
 input bool   EnableM1ShadowOutcomes=true;
+input bool   RequireM5ClosedSweep=false;  // teste SMC objetivo
+input bool   RequireM15ClosedFVG=false;   // teste 3 candles fechados
 input double ShadowReferenceLot=0.01;
 input string TapeCSVFileName="ALIEN_TURBO_CANDIDATES.csv";
 input string OutcomeCSVFileName="ALIEN_TURBO_OUTCOMES.csv";
@@ -147,6 +149,44 @@ double ActiveWorstStopExposureUsd()
    total+=MathMax(0.0,-pnl)+lot*AssumedCommissionPerLot;
  }
  return total;
+}
+
+
+int EffectiveMaxOpenPositions()
+{
+ // Netting suporta apenas uma posicao por simbolo. Nao afirmar
+ // que o teste multicadeira realmente abriu cinco num terminal netting.
+ if(AccountInfoInteger(ACCOUNT_MARGIN_MODE)!=ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+    return 1;
+ return MaxOpenPositions;
+}
+
+bool M5ClosedLiquiditySweep(int dir)
+{
+ MqlRates m[];
+ ArraySetAsSeries(m,true);
+ if(CopyRates(_Symbol,PERIOD_M5,1,11,m)!=11)return false;
+ double previousHigh=m[1].high,previousLow=m[1].low;
+ for(int i=2;i<=10;i++)
+ {
+    previousHigh=MathMax(previousHigh,m[i].high);
+    previousLow=MathMin(previousLow,m[i].low);
+ }
+ // Varrer pool conhecido e fechar de volta com corpo na direcao.
+ if(dir==1)
+    return m[0].low<previousLow-2.0*_Point &&
+           m[0].close>previousLow && m[0].close>m[0].open;
+ return m[0].high>previousHigh+2.0*_Point &&
+        m[0].close<previousHigh && m[0].close<m[0].open;
+}
+
+bool M15ThreeCandleFVG(int dir)
+{
+ MqlRates m[];
+ ArraySetAsSeries(m,true);
+ if(CopyRates(_Symbol,PERIOD_M15,1,3,m)!=3)return false;
+ if(dir==1)return m[0].low>m[2].high+2.0*_Point;
+ return m[0].high<m[2].low-2.0*_Point;
 }
 
 void CloseOwn(string why)
@@ -343,7 +383,7 @@ void TapeCandidate(string id,datetime signalTime,const MqlTick &q,
                    double h1Close,double h1Sma,double h1Slope,
                    double m15Close,double m15Eq,
                    double atrPoints,double bbWidth,double bbPosition,
-                   bool priceStopValid)
+                   bool m5Sweep,bool m15Fvg,bool priceStopValid)
 {
  if(g_tape==INVALID_HANDLE)return;
  bool inSession=SessionOK();
@@ -366,6 +406,7 @@ void TapeCandidate(string id,datetime signalTime,const MqlTick &q,
    DoubleToString(m15Close,_Digits),DoubleToString(m15Eq,_Digits),
    DoubleToString(atrPoints,2),DoubleToString(bbWidth,2),
    DoubleToString(bbPosition,4),
+   (m5Sweep?"1":"0"),(m15Fvg?"1":"0"),
    (inSession?"1":"0"),(g_locked?"1":"0"),
    IntegerToString(PositionsTotal()),IntegerToString(g_dayTrades),
    (inCooldown?"1":"0"),
@@ -544,19 +585,21 @@ void TestSignal()
             h1Close,h1Sma,h1Slope,m15Close,m15Eq);
  double atrPts=0,bbWidth=0,bbPosition=0;
  M1MarketFeatures(atrPts,bbWidth,bbPosition);
+ bool m5Sweep=M5ClosedLiquiditySweep(dir);
+ bool m15Fvg=M15ThreeCandleFVG(dir);
  string id=StringFormat("%I64d_%s", (long)b[0].time,(dir==1?"BUY":"SELL"));
 
  if(EnableSignalTape)
    TapeCandidate(id,b[0].time,q,dir,body,entry,sl,tp,stopPts,
           h1OK,m15OK,contextOK,info,h1Close,h1Sma,h1Slope,
-          m15Close,m15Eq,atrPts,bbWidth,bbPosition,sideOK);
+          m15Close,m15Eq,atrPts,bbWidth,bbPosition,m5Sweep,m15Fvg,sideOK);
  StartShadow(id,b[0].time,q,dir,entry,sl,tp,contextOK,stopOK,spreadOK);
 
  // Limites a seguir controlam apenas EXECUCAO do Strategy Tester;
  // todos os sinais M1 ja foram registrados na fita independente.
  if(g_locked)return;
  if(!SessionOK())return;
- if(PositionsTotal()>=MaxOpenPositions)return;
+ if(PositionsTotal()>=EffectiveMaxOpenPositions())return;
  if(g_dayTrades>=MaxDayTrades)return;
  if(g_lastTrade>0 && TimeCurrent()-g_lastTrade<CooldownMinutes*60)return;
  if(RequireH1M15Context && !contextOK)
@@ -567,6 +610,10 @@ void TestSignal()
  }
  if(RequireH1M15Context)
     LogRow("CONTEXTO_APROVADO",info,dir,q.bid,q.ask);
+ if(RequireM5ClosedSweep && !m5Sweep)
+ {g_vetoes++;LogRow("VETO_M5_SWEEP","sem sweep M5 fechado",dir,q.bid,q.ask);return;}
+ if(RequireM15ClosedFVG && !m15Fvg)
+ {g_vetoes++;LogRow("VETO_M15_FVG","sem gap M15 3 candles",dir,q.bid,q.ask);return;}
  if(!spreadOK)
  {g_vetoes++;LogRow("VETO_SPREAD","spread alto",dir,q.bid,q.ask);return;}
  if(!stopOK)
@@ -685,7 +732,8 @@ int OnInit()
           "h1_ok","m15_ok","both_context_ok","context_note",
           "h1_close","h1_sma20","h1_sma_slope_pts",
           "m15_close","m15_range_mid","m1_atr14_pts",
-          "bb20_width_pts","bb20_position","session_ok",
+          "bb20_width_pts","bb20_position",
+          "m5_sweep_aligned","m15_fvg_aligned","session_ok",
           "portfolio_locked","open_positions","day_entries",
           "cooldown_active","stop_within_limits","spread_within_limit");
       FileSeek(g_tape,0,SEEK_END);
@@ -707,8 +755,11 @@ int OnInit()
    g_lastBar=iTime(_Symbol,PERIOD_M1,0);
    RiskProtection();
    LogRow("START",StringFormat("TURBO TESTER ONLY: maxDay=%d cooldown=%d maxPos=%d H1M15=%s RR=%.1f",
-          MaxDayTrades,CooldownMinutes,MaxOpenPositions,
+          MaxDayTrades,CooldownMinutes,EffectiveMaxOpenPositions(),
           (RequireH1M15Context?"ON":"OFF"),RewardRisk));
+   PrintFormat("[TURBO] requested_max_positions=%d effective=%d margin_mode=%d",
+      MaxOpenPositions,EffectiveMaxOpenPositions(),
+      (int)AccountInfoInteger(ACCOUNT_MARGIN_MODE));
    return INIT_SUCCEEDED;
 }
 
