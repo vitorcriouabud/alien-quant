@@ -118,7 +118,7 @@ class ABEvidence(unittest.TestCase):
         s=self.runner
         for item in (
           "ALIEN_TEST_MT5",
-          'Where-Object {$_.ExecutablePath -and $_.ExecutablePath -ieq $terminal}',
+          '([IO.Path]::GetFullPath($_.ExecutablePath) -ieq $expected)',
           "SkipCompile=($plan.label -eq \"B_CONTEXT\")",
           "Compare-Object -ReferenceObject $baseNormalized",
           "EX5 mudou entre A e B",
@@ -133,6 +133,20 @@ class ABEvidence(unittest.TestCase):
                 self.assertIn("VETO_CONTEXTO",s)
             else:
                 self.assertIn(item,s)
+
+    def test_each_stage_closes_only_identified_test_terminal(self):
+        script = self.runner
+        self.assertIn("function Stop-IsolatedTestTerminal", script)
+        loop_pos = script.index("foreach($plan in $plans){")
+        stop_pos = script.index("Stop-IsolatedTestTerminal -Etapa $plan.label", loop_pos)
+        runner_pos = script.index("& $runner @par", loop_pos)
+        self.assertLess(stop_pos, runner_pos)
+        self.assertIn("Get-CimInstance Win32_Process", script)
+        self.assertIn("GetFullPath($terminal)", script)
+        self.assertIn("GetFullPath($current.ExecutablePath)", script)
+        self.assertIn("Stop-Process -Id $testPid -Force", script)
+        self.assertIn("Terminal ISOLADO permaneceu aberto", script)
+        self.assertNotIn("Stop-Process -Name terminal64", script)
 
     def test_synthetic_zip_audit(self):
         entries={"A_BASE":False,"B_CONTEXT":True}
