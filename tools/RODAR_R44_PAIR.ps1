@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference="Stop"
 $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $source=Join-Path $repo "MQL5\Experts\ALIEN_R44_LOCAL_STOP_SHADOW.mq5"
-$baseSet=Join-Path $repo "MQL5\Profiles\Tester\ALIEN_R44_PAIR_PAIR.set"
+$baseSet=Join-Path $repo "MQL5\Profiles\Tester\ALIEN_R44_SHADOW_PAIR.set"
 $runner=Join-Path $repo "tools\Run-Backtest.ps1"
 if(-not (Test-Path -LiteralPath $source) -or -not (Test-Path -LiteralPath $baseSet) -or -not (Test-Path -LiteralPath $runner)) {
   throw "Arquivos do R4.4 ausentes. Abra PowerShell na pasta correta do projeto."
