@@ -194,6 +194,32 @@ class TurboTests(unittest.TestCase):
                 continue
             self.assertIn(token,s)
 
+    def test_failures_collect_agent_logs_and_use_short_test_files(self):
+        s=self.runner
+        for piece in (
+            '$shortStem="AT_"+$stamp+"_"+$plan.id',
+            '$shortStem+"_T.csv"',
+            '$shortStem+"_C.csv"',
+            '$shortStem+"_O.csv"',
+            '$archiveName=$testId+$archiveSuffix[$key]',
+            "DIAGNOSTICO_FATAL.txt",
+            "compile_ALIEN_GOAT5K_TURBO_DISCOVERY_TESTER.log",
+            "MetaQuotes\\Tester",
+            "Get-Content -LiteralPath $log.FullName -Tail 170",
+        ):
+            self.assertIn(piece,s)
+
+    def test_explicit_init_diagnostics(self):
+        for text in (
+            "0.121",
+            "[ALIEN TURBO INIT ERROR]",
+            "[ALIEN TURBO INIT OK]",
+            "arquivo TAPE falhou",
+            "arquivo OUTCOMES falhou",
+            "ResetLastError();",
+        ):
+            self.assertIn(text,self.source)
+
     def test_synthetic_zip_audit_verifies_hashes_and_does_not_claim_fills(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"ALIEN_TURBO_DISCOVERY_FAKE.zip"
