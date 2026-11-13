@@ -4,7 +4,7 @@
 //| Orders are IMPOSSIBLE outside MT5 Strategy Tester.                |
 //+------------------------------------------------------------------+
 #property strict
-#property version "0.120"
+#property version "0.121"
 #property description "ALIEN GOAT5K: multiple tester-only experiments + unconditional signal tape"
 #include <Trade/Trade.mqh>
 CTrade trade;
@@ -669,6 +669,10 @@ void TestSignal()
 
 int OnInit()
 {
+   PrintFormat("[ALIEN TURBO INIT] build 0.121 tester=%d symbol=%s tf=%d balance=%.2f volumeMax=%.2f capDay=%d csv=%s tape=%s outcomes=%s",
+      (int)MQLInfoInteger(MQL_TESTER),_Symbol,(int)_Period,
+      AccountInfoDouble(ACCOUNT_BALANCE),MaxLot,MaxDayTrades,
+      CSVFileName,TapeCSVFileName,OutcomeCSVFileName);
    string symbol=_Symbol;
    StringToUpper(symbol);
    if(MQLInfoInteger(MQL_TESTER)==0 || !EnableTesterOrders ||
@@ -703,19 +707,27 @@ int OnInit()
       StringFind(OutcomeCSVFileName,"/")>=0 ||
       StringFind(OutcomeCSVFileName,"\\")>=0)
    {
-      Print("ALIEN: BLOQUEADO. Somente Tester XAUUSD M1, deposit 5000,"
-            " max 0.25% e configuracao de pesquisa segura.");
+      PrintFormat("[ALIEN TURBO INIT ERROR] parametros bloqueados: tester=%d tf=%d symbol=%s balance=%.2f riskPct=%.3f riskCap=%.2f maxPos=%d maxDay=%d floating=%.2f",
+         (int)MQLInfoInteger(MQL_TESTER),(int)_Period,_Symbol,
+         AccountInfoDouble(ACCOUNT_BALANCE),RiskLimitPct,RiskMaxUsd,
+         MaxOpenPositions,MaxDayTrades,FloatingSafetyUsd);
       return INIT_PARAMETERS_INCORRECT;
    }
    trade.SetExpertMagicNumber(TestMagic);
    trade.SetDeviationInPoints(15);
    trade.SetAsyncMode(false);
-   if(!trade.SetTypeFillingBySymbol(_Symbol)) return INIT_FAILED;
+   if(!trade.SetTypeFillingBySymbol(_Symbol))
+   {
+      PrintFormat("[ALIEN TURBO INIT ERROR] filling nao determinado para %s err=%d",_Symbol,GetLastError());
+      return INIT_FAILED;
+   }
+   ResetLastError();
    g_file=FileOpen(CSVFileName,FILE_READ|FILE_WRITE|FILE_CSV|
                     FILE_ANSI|FILE_SHARE_READ,';');
    if(g_file==INVALID_HANDLE)
    {
-      Print("ALIEN: nao abriu CSV erro ",GetLastError());
+      PrintFormat("[ALIEN TURBO INIT ERROR] arquivo TRADE aberto falhou (len=%d) file=%s err=%d",
+                  StringLen(CSVFileName),CSVFileName,GetLastError());
       return INIT_FAILED;
    }
    if(FileSize(g_file)==0)
@@ -726,10 +738,12 @@ int OnInit()
    FileSeek(g_file,0,SEEK_END);
    if(EnableSignalTape)
    {
+      ResetLastError();
       g_tape=FileOpen(TapeCSVFileName,FILE_READ|FILE_WRITE|FILE_CSV|
                      FILE_ANSI|FILE_SHARE_READ,';');
       if(g_tape==INVALID_HANDLE)
-      {Print("FALHA arquivo tape ",GetLastError());return INIT_FAILED;}
+      {PrintFormat("[ALIEN TURBO INIT ERROR] arquivo TAPE falhou len=%d file=%s err=%d",
+                StringLen(TapeCSVFileName),TapeCSVFileName,GetLastError());return INIT_FAILED;}
       if(FileSize(g_tape)==0)
          FileWrite(g_tape,"candidate_id","observed_at","tick_msc",
           "signal_bar","direction","bid","ask","spread_points",
@@ -745,10 +759,12 @@ int OnInit()
    }
    if(EnableM1ShadowOutcomes)
    {
+      ResetLastError();
       g_outcomes=FileOpen(OutcomeCSVFileName,FILE_READ|FILE_WRITE|FILE_CSV|
                           FILE_ANSI|FILE_SHARE_READ,';');
       if(g_outcomes==INVALID_HANDLE)
-      {Print("FALHA arquivo shadow ",GetLastError());return INIT_FAILED;}
+      {PrintFormat("[ALIEN TURBO INIT ERROR] arquivo OUTCOMES falhou len=%d file=%s err=%d",
+                StringLen(OutcomeCSVFileName),OutcomeCSVFileName,GetLastError());return INIT_FAILED;}
       if(FileSize(g_outcomes)==0)
          FileWrite(g_outcomes,"candidate_id","state","opened_at",
           "observed_at","direction","entry","stop","target",
@@ -758,6 +774,8 @@ int OnInit()
       FileSeek(g_outcomes,0,SEEK_END);
    }
    g_lastBar=iTime(_Symbol,PERIOD_M1,0);
+   PrintFormat("[ALIEN TURBO INIT OK] arquivos: trade=%d tape=%d shadow=%d",
+               g_file,g_tape,g_outcomes);
    RiskProtection();
    LogRow("START",StringFormat("TURBO TESTER ONLY: maxDay=%d cooldown=%d maxPos=%d H1M15=%s RR=%.1f",
           MaxDayTrades,CooldownMinutes,EffectiveMaxOpenPositions(),
