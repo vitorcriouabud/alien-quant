@@ -11,8 +11,22 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $source=Join-Path $repo "MQL5\Experts\ALIEN_GENESIS_MTF_R41_DEMO.mq5"
 $runner=Join-Path $repo "tools\Run-Backtest.ps1"
 $preDir=Join-Path $repo "MQL5\Profiles\Tester"
-if (-not (Test-Path "C:\ALIEN_TEST_MT5\terminal64.exe")) {
-  throw "Terminal TESTADOR portatil ausente em C:\ALIEN_TEST_MT5. NAO use terminal real."
+$testInstall = if (Test-Path "C:\ALIEN_TEST_MT5\terminal64.exe") {
+    "C:\ALIEN_TEST_MT5"
+} else {
+    Join-Path $env:LOCALAPPDATA "ALIEN_TEST_MT5"
+}
+if (-not (Test-Path (Join-Path $testInstall "terminal64.exe"))) {
+   Write-Host "MT5 isolado nao existe. Criando copia SEGURA do programa, sem copiar login..." -ForegroundColor Yellow
+   & (Join-Path $PSScriptRoot "CRIAR_MT5_TESTE_SEGURO.ps1")
+   if (-not (Test-Path (Join-Path $testInstall "terminal64.exe"))) {
+      throw "Falhou criacao do testador isolado em $testInstall."
+   }
+   Write-Host ""
+   Write-Host "MT5 de testes criado. Conecte uma conta DEMO neste terminal para carregar historico." -ForegroundColor Cyan
+   Write-Host "Depois feche o terminal de teste e execute o mesmo comando novamente." -ForegroundColor Cyan
+   Start-Process -FilePath (Join-Path $testInstall "terminal64.exe") -WorkingDirectory $testInstall -ArgumentList "/portable"
+   return
 }
 if (-not (Test-Path $runner) -or -not (Test-Path $source)) {
   throw "Arquivos do projeto ausentes."
@@ -63,8 +77,8 @@ foreach($exp in $experiments) {
   $knownSourceSha=$sourceSha
   $knownExeSha=$exeSha
   $reportCandidates=@(
-    (Join-Path "C:\ALIEN_TEST_MT5" ($name+".htm")),
-    (Join-Path "C:\ALIEN_TEST_MT5" ($name+".html")),
+    (Join-Path $testInstall ($name+".htm")),
+    (Join-Path $testInstall ($name+".html")),
     (Join-Path "C:\Users\notebook\.gemini\antigravity\scratch\ALIEN_LAB\results\$name" ($name+".htm")),
     (Join-Path "C:\Users\notebook\.gemini\antigravity\scratch\ALIEN_LAB\results\$name" ($name+".html"))
   )
@@ -75,8 +89,8 @@ foreach($exp in $experiments) {
 
   $testRoots=@(
      (Join-Path $env:APPDATA "MetaQuotes\Tester"),
-     "C:\ALIEN_TEST_MT5\Tester",
-     "C:\ALIEN_TEST_MT5\MQL5\Files"
+     (Join-Path $testInstall "Tester"),
+     (Join-Path $testInstall "MQL5\Files")
   )
   $candidates=@()
   foreach($root in $testRoots) {
