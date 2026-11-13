@@ -1,0 +1,37 @@
+name: ALIEN R4.2 Shadow Lab Static Audit
+on:
+  push:
+    branches: ["feat/alien-r42-shadow-evidence-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_R42_SHADOW_LAB.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R42_SHADOW_LAB.set"
+      - "tools/RODAR_R42_SHADOW.ps1"
+      - "tests/test_alien_r42_static.py"
+      - ".github/workflows/alien-r42-static.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_R42_SHADOW_LAB.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R42_SHADOW_LAB.set"
+      - "tools/RODAR_R42_SHADOW.ps1"
+      - "tests/test_alien_r42_static.py"
+      - ".github/workflows/alien-r42-static.yml"
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m unittest discover -s tests -p 'test_alien_r42_static.py' -v
+      - name: Check PowerShell parser syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/RODAR_R42_SHADOW.ps1").Path,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {throw "$errors"}
