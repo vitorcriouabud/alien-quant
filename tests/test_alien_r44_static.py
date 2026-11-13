@@ -13,7 +13,7 @@ class R44Guards(unittest.TestCase):
     def setUpClass(cls):
         cls.ea=EA.read_text(encoding="utf-8")
         cls.ps=P.read_text(encoding="utf-8")
-        cls.run=RUN.read_text(encoding="utf-8")
+        cls.runner=RUN.read_text(encoding="utf-8")
 
     def test_default_inputs_frozen(self):
         params=re.findall(r'^\s*input\s+(?:bool|int|double|ulong|string)\s+(\w+)\s*=\s*([^;]+);',self.ea,re.M)
@@ -89,7 +89,7 @@ class R44Guards(unittest.TestCase):
           "CSVFileName=",
           "ShadowCSVFileName=",
         ):
-            self.assertIn(token,self.run)
+            self.assertIn(token,self.runner)
 
 if __name__=="__main__":
     unittest.main()
