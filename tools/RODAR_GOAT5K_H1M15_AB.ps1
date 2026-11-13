@@ -77,14 +77,20 @@ foreach($plan in $plans){
  if(@($actual|Where-Object {$_ -match "^CSVFileName=.*\|\|"}).Count -gt 0){
     throw "CSV string nao pode conter metadados ||."
  }
- # Comparar todos os outros campos: somente modo + nome CSV podem variar.
- $normal=@($actual|Where-Object {
-   $_ -notmatch "^RequireH1M15Context=" -and $_ -notmatch "^CSVFileName="
- })
+ # Compara APENAS inputs do Strategy Tester. Os comentarios nos dois
+ # presets identificam A_BASE/B_CONTEXT e NAO sao parametros de trading.
+ # Uma comparacao de linhas integrais causava falso veto no segundo teste.
+ $normal=@($actual | Where-Object {
+    $_ -match "^[A-Za-z][A-Za-z0-9_]*=" -and
+    $_ -notmatch "^(RequireH1M15Context|CSVFileName)="
+ } | ForEach-Object { $_.Trim() } | Sort-Object)
  if($null -eq $baseNormalized){$baseNormalized=$normal}
  else{
-   $difference=@(Compare-Object -ReferenceObject $baseNormalized -DifferenceObject $normal)
-   if($difference.Count -gt 0){throw "AB difere em mais de um parametro de estrategia."}
+   $difference=@(Compare-Object -ReferenceObject $baseNormalized -DifferenceObject $normal -CaseSensitive)
+   if($difference.Count -gt 0){
+      $only=@($difference | ForEach-Object { $_.InputObject }) -join "; "
+      throw "AB difere em parametro de estrategia: $only"
+   }
  }
  [IO.File]::WriteAllLines($frozenSet,[string[]]$actual,[Text.Encoding]::ASCII)
 
