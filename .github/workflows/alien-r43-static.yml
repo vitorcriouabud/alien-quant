@@ -1,0 +1,39 @@
+name: ALIEN R4.3 Early M1 Shadow A-B
+on:
+  push:
+    branches: ["feat/alien-r43-early-choch-shadow-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_R43_EARLY_M1_SHADOW.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R43_*.set"
+      - "tools/RODAR_R43_AB.ps1"
+      - "tests/test_alien_r43_static.py"
+      - ".github/workflows/alien-r43-static.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_R43_EARLY_M1_SHADOW.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R43_*.set"
+      - "tools/RODAR_R43_AB.ps1"
+      - "tests/test_alien_r43_static.py"
+      - ".github/workflows/alien-r43-static.yml"
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Static invariants
+        run: python -m unittest discover -s tests -p 'test_alien_r43_static.py' -v
+      - name: PowerShell parse (not execution)
+        shell: pwsh
+        run: |
+          $tok = $null
+          $err = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/RODAR_R43_AB.ps1").Path,
+            [ref]$tok,[ref]$err
+          ) | Out-Null
+          if ($err.Count -gt 0) {throw "$err"}
