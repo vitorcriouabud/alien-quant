@@ -177,6 +177,8 @@ void LogEvent(string eventName,string detail,
               double entry=0.0,double sl=0.0,double tp=0.0,
               double volume=0.0,double riskMoney=0.0)
 {
+   // Preservar as 26 colunas CSV, mesmo com texto livre nos motivos.
+   StringReplace(detail,";",",");
    g_lastReason=eventName+" "+detail;
    Print("[ALIEN_GENESIS] ",g_lastReason," event_id=",g_setup.eventId);
    if(g_csv!=INVALID_HANDLE)
