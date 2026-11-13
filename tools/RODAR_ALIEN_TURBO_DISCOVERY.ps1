@@ -1,5 +1,5 @@
 #requires -Version 5.1
-# ALIEN TURBO LAB: 8 experimento(s), somente MT5 Strategy Tester portatil.
+# ALIEN TURBO LAB: 9 experimento(s), somente MT5 Strategy Tester portatil.
 # NEVER trade in live Goat / RoboForex; never close non-isolated terminals.
 param(
  [string]$FromDate="2026.10.21",
@@ -52,13 +52,14 @@ function Stop-AlienIsolatedTerminal {
 # Ordem importa: cada passo muda UM conjunto conhecido de variáveis.
 $plans=@(
  @{id="A_BASE";change=@{}},
- @{id="B_FREQUENCY";change=@{MaxDayTrades="200";CooldownMinutes="0"}},
- @{id="C_ALLDAY";change=@{MaxDayTrades="200";CooldownMinutes="0";StartServerHour="0";EndServerHour="24"}},
- @{id="D_MULTI5";change=@{MaxDayTrades="200";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5"}},
- @{id="E_H1M15";change=@{MaxDayTrades="200";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RequireH1M15Context="true"}},
- @{id="F_M5SWEEP";change=@{MaxDayTrades="200";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RequireM5ClosedSweep="true"}},
- @{id="G_M15FVG";change=@{MaxDayTrades="200";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RequireM15ClosedFVG="true"}},
- @{id="H_RR3";change=@{MaxDayTrades="200";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RewardRisk="3.0"}}
+ @{id="B_FREQUENCY";change=@{MaxDayTrades="1440";CooldownMinutes="0"}},
+ @{id="C_ALLDAY";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24"}},
+ @{id="D_MULTI5";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5"}},
+ @{id="E_H1M15";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RequireH1M15Context="true"}},
+ @{id="F_M5SWEEP";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RequireM5ClosedSweep="true"}},
+ @{id="G_M15FVG";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RequireM15ClosedFVG="true"}},
+ @{id="H_RR3";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";RewardRisk="3.0"}},
+ @{id="I_RISKSIZED";change=@{MaxDayTrades="1440";CooldownMinutes="0";StartServerHour="0";EndServerHour="24";MaxOpenPositions="5";MaxLot="0.05"}}
 )
 $stamp=Get-Date -Format "yyyyMMdd_HHmmss"
 $name="ALIEN_TURBO_DISCOVERY_"+$stamp
@@ -230,4 +231,4 @@ try {
 if(-not $meta.success){
  throw "ALIEN TURBO teve execucao parcial. Envie o ZIP produzido e o erro ao ChatGPT; nao altere o MT5 principal."
 }
-Write-Host "ALIEN TURBO: 8 estudos concluidos; anexe ZIP para auditoria de custos e de sinais." -ForegroundColor Green
+Write-Host "ALIEN TURBO: 9 estudos concluidos; anexe ZIP para auditoria de custos e de sinais." -ForegroundColor Green
