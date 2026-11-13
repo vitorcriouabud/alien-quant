@@ -1,0 +1,42 @@
+name: ALIEN R4.4 Local Stop Pair Shadow Static Checks
+
+on:
+  push:
+    branches: ["feat/alien-r44-stop-local-protocolo-20261113"]
+    paths:
+      - "MQL5/Experts/ALIEN_R44_LOCAL_STOP_SHADOW.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R44_SHADOW_PAIR.set"
+      - "tools/RODAR_R44_PAIR.ps1"
+      - "tests/test_alien_r44_static.py"
+      - ".github/workflows/alien-r44-static.yml"
+  pull_request:
+    paths:
+      - "MQL5/Experts/ALIEN_R44_LOCAL_STOP_SHADOW.mq5"
+      - "MQL5/Profiles/Tester/ALIEN_R44_SHADOW_PAIR.set"
+      - "tools/RODAR_R44_PAIR.ps1"
+      - "tests/test_alien_r44_static.py"
+      - ".github/workflows/alien-r44-static.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify deterministic paired stop design
+        run: python -m unittest discover -s tests -p 'test_alien_r44_static.py' -v
+      - name: Parse PowerShell (not executing MT5)
+        shell: pwsh
+        run: |
+          $tok = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "tools/RODAR_R44_PAIR.ps1").Path,
+            [ref]$tok, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { throw "$errors" }
