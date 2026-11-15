@@ -6,7 +6,7 @@
 //| WebRequest" com https://api.telegram.org na lista.               |
 //+------------------------------------------------------------------+
 #property copyright "ALIEN - Vitor Lima"
-#property version   "12.30"
+#property version   "12.40"
 #property description "Envia os sinais do ALIEN PROFESSOR pro Telegram (texto + print do gráfico). Não opera."
 
 input bool   InpUseTelegram    = true;  // Usar Telegram

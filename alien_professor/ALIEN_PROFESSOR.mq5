@@ -5,7 +5,7 @@
 //| XAUUSD e índices (.US500Cash, .USTECHCash, .DE40Cash)            |
 //+------------------------------------------------------------------+
 #property copyright "ALIEN - Vitor Lima"
-#property version   "12.30"
+#property version   "12.40"
 #property description "Professor: contexto H1, liquidez (PDH/PDL, Ásia, Londres, semana, topos/fundos iguais), varridas, BOS, FVG, volume, nota 0-10, plano com lote pelo risco e disciplina do dia. Só ajuda - quem decide é você. Nunca opera."
 #property indicator_chart_window
 #property indicator_buffers 0
@@ -582,7 +582,7 @@ string NewsJSON()
    {
       if(g_news[i].t<now-3600) continue;
       string nm=g_news[i].nome; StringReplace(nm,"\\",""); StringReplace(nm,"\"","'");
-      s+=(s==""?"":",")+StringFormat("{\"hora\":\"%s\",\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",TimeToString(g_news[i].t,TIME_DATE|TIME_MINUTES),TimeToString(SrvParaBR(g_news[i].t),TIME_MINUTES),(int)((g_news[i].t-now)/60),g_news[i].cur,ImpTxt(g_news[i].imp),nm);
+      s+=(s==""?"":",")+StringFormat("{\"data_brasilia\":\"%s\",\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",TimeToString(SrvParaBR(g_news[i].t),TIME_DATE),TimeToString(SrvParaBR(g_news[i].t),TIME_MINUTES),(int)((g_news[i].t-now)/60),g_news[i].cur,ImpTxt(g_news[i].imp),nm);
       n++;
    }
    return "["+s+"]";
@@ -1834,7 +1834,7 @@ void PainelDesenhaDash()
    if(g_aiPanelT>0)
    {
       PainelFonte(f-2,false);
-      g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(g_aiPanelT,TIME_MINUTES)+" (hora do servidor)",ColorToARGB(clrSilver,255));
+      g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(SrvParaBR(g_aiPanelT),TIME_MINUTES)+" (Brasília)",ColorToARGB(clrSilver,255));
    }
    y=boxY+boxH+6;
 

@@ -6,10 +6,10 @@
 //| Stop e alvo vão junto com a ordem. Conta real bloqueada padrão.  |
 //+------------------------------------------------------------------+
 #property copyright "ALIEN - Vitor Lima"
-#property version   "12.30"
+#property version   "12.40"
 #property description "Robô dos sinais do ALIEN PROFESSOR. Risco fixo, 1 posição, travas diárias, DD 15%, bloqueio de conta real. ATENÇÃO: o teste histórico dos sinais foi NEGATIVO."
 #define APROF_EA
-#define APROF_VER "12.3"
+#define APROF_VER "12.4"
 #include <Trade\Trade.mqh>
 
 input group "=== ROBÔ (AUTO) ==="
@@ -624,7 +624,7 @@ string NewsJSON()
    {
       if(g_news[i].t<now-3600) continue;
       string nm=g_news[i].nome; StringReplace(nm,"\\",""); StringReplace(nm,"\"","'");
-      s+=(s==""?"":",")+StringFormat("{\"hora\":\"%s\",\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",TimeToString(g_news[i].t,TIME_DATE|TIME_MINUTES),TimeToString(SrvParaBR(g_news[i].t),TIME_MINUTES),(int)((g_news[i].t-now)/60),g_news[i].cur,ImpTxt(g_news[i].imp),nm);
+      s+=(s==""?"":",")+StringFormat("{\"data_brasilia\":\"%s\",\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",TimeToString(SrvParaBR(g_news[i].t),TIME_DATE),TimeToString(SrvParaBR(g_news[i].t),TIME_MINUTES),(int)((g_news[i].t-now)/60),g_news[i].cur,ImpTxt(g_news[i].imp),nm);
       n++;
    }
    return "["+s+"]";
@@ -1876,7 +1876,7 @@ void PainelDesenhaDash()
    if(g_aiPanelT>0)
    {
       PainelFonte(f-2,false);
-      g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(g_aiPanelT,TIME_MINUTES)+" (hora do servidor)",ColorToARGB(clrSilver,255));
+      g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(SrvParaBR(g_aiPanelT),TIME_MINUTES)+" (Brasília)",ColorToARGB(clrSilver,255));
    }
    y=boxY+boxH+6;
 
@@ -2081,6 +2081,10 @@ void DrawCenarios()
 // ---- configuração pessoal local (MQL5\Files\ALIEN_config.txt) ----
 // Token, chat id e chaves ficam NESTE arquivo do seu PC, não no robô. Atualizar o robô não apaga.
 string g_cfgTgToken="", g_cfgTgChat=""; bool g_cfgAssistente=false; string g_cfgOrigem="parâmetros";
+// v12.4: grupo do Telegram (opcional). telegram_grupo_id fica no ALIEN_config.txt; o Vitor manda /grupo no grupo pra liberar.
+string g_cfgGrupo=""; bool g_cfgGrupoAlertas=false;
+// para onde vai a resposta da mensagem que está sendo atendida ("" = chat privado do dono)
+string g_tgReply=""; bool g_tgEmGrupo=false; string g_tgQuem="Vitor";
 string CfgArq(){ return "ALIEN_config.txt"; }
 // grava/troca uma linha "chave=valor" no ALIEN_config.txt (mantém o resto)
 void CfgSalva(string chave,string valor)
@@ -2097,7 +2101,7 @@ void CfgSalva(string chave,string valor)
 }
 void CfgLoad()
 {
-   g_cfgTgToken=InpTelegramToken; g_cfgTgChat=InpTelegramChatId; AICfgInit(); g_cfgAssistente=false; g_cfgOrigem="parâmetros";
+   g_cfgTgToken=InpTelegramToken; g_cfgTgChat=InpTelegramChatId; AICfgInit(); g_cfgAssistente=false; g_cfgOrigem="parâmetros"; g_cfgGrupo=""; g_cfgGrupoAlertas=false;
    int h=FileOpen(CfgArq(),FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
    if(h==INVALID_HANDLE) return;
    int n=0;
@@ -2113,6 +2117,8 @@ void CfgLoad()
       else if(k=="gemini_chave_1"){ g_cfgAI2Key=v; n++; }
       else if(k=="gemini_chave_2"){ g_cfgGem2=v; n++; }
       else if(k=="xai_chave"){ g_cfgAIKey=v; n++; }
+      else if(k=="telegram_grupo_id"){ g_cfgGrupo=v; n++; }
+      else if(k=="grupo_alertas"){ g_cfgGrupoAlertas=(v=="1" || v=="sim" || v=="true"); n++; }
       else if(k=="modo"){ string m=v; StringToLower(m); g_cfgAssistente=(StringFind(m,"assist")==0); n++; }
    }
    FileClose(h);
@@ -2135,7 +2141,16 @@ string UrlEnc(string s)
 // WebRequest não existe no testador -> Telegram desligado lá
 bool TgTokenOk(){ return InpUseTelegram && StringLen(g_cfgTgToken)>20 && !MQLInfoInteger(MQL_TESTER); }
 bool TgOk(){ return TgTokenOk() && StringLen(g_cfgTgChat)>0; }
-bool SendMsg(string text){ if(!TgOk()) return false; return SendMsgTo(g_cfgTgChat,text); }
+// destino da resposta: o chat de onde veio a mensagem (grupo ou privado); fora disso, o privado do dono
+string TgDestino(){ return g_tgReply!=""?g_tgReply:g_cfgTgChat; }
+bool SendMsg(string text)
+{
+   if(!TgOk()) return false;
+   bool ok=SendMsgTo(TgDestino(),text);
+   // aviso automático (fora de uma conversa): só vai pro grupo se grupo_alertas=1
+   if(g_tgReply=="" && g_cfgGrupoAlertas && g_cfgGrupo!="" && g_cfgGrupo!=g_cfgTgChat) SendMsgTo(g_cfgGrupo,text);
+   return ok;
+}
 bool SendMsgTo(string chat,string text)
 {
    if(!TgTokenOk() || chat=="") return false;
@@ -2157,7 +2172,7 @@ bool SendPhoto(string file,string caption)
    uchar img[]; FileReadArray(h,img); FileClose(h);
    string bd="----ALIENPROF"+IntegerToString(GetTickCount());
    char buf[]; ArrayResize(buf,0);
-   AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n"+g_cfgTgChat+"\r\n");
+   AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n"+TgDestino()+"\r\n");
    if(StringLen(caption)>1000) caption=StringSubstr(caption,0,1000);
    AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n"+caption+"\r\n");
    AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"grafico.png\"\r\nContent-Type: image/png\r\n\r\n");
@@ -2738,7 +2753,7 @@ string HistResumo(const Plano &b)
 // estado do professor em JSON compacto (para a IA)
 string StateJSON(const Plano &b)
 {
-   string j="{\"simbolo\":\""+_Symbol+"\",\"hora_servidor\":\""+TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES)+"\",\"tendencias\":{";
+   string j="{\"simbolo\":\""+_Symbol+"\",\"hora_brasilia\":\""+TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES)+"\",\"tendencias\":{";
    for(int i=0;i<6;i++) j+=(i?",":"")+"\""+g_mtfNm[i]+"\":"+IntegerToString(g_mtf[i]);
    j+="},\"niveis\":[";
    for(int v=0;v<ArraySize(g_niv);v++) j+=(v?",":"")+StringFormat("{\"n\":\"%s\",\"p\":%s,\"e\":\"%s\"}",JEsc(g_niv[v].nome),Fmt(g_niv[v].preco),g_niv[v].estado==ST_VARRIDA?"varrida":(g_niv[v].estado==ST_ROMPIDO?"rompido":"intacto"));
@@ -2830,6 +2845,31 @@ string PosJSON()
    return "["+s+"]";
 }
 string HoraUTC3(){ return TimeToString((datetime)(TimeGMT()-3*3600),TIME_DATE|TIME_MINUTES); }
+// v12.4: "15/11 18:58" (data e hora de Brasília a partir de um horário do servidor)
+string DataHoraBR(datetime srv){ MqlDateTime d; TimeToStruct(SrvParaBR(srv),d); return StringFormat("%02d/%02d %02d:%02d",d.day,d.mon,d.hour,d.min); }
+// v12.4: mercado fechado = sem tick há mais de 5 min (fim de semana, feriado, pausa diária)
+datetime UltTickSrv(string sym){ datetime t=(datetime)SymbolInfoInteger(sym,SYMBOL_TIME); if(t<=0) t=iTime(sym,PERIOD_M1,0); return t; }
+bool MercadoFechado(string sym="")
+{
+   if(sym=="") sym=_Symbol;
+   if(MQLInfoInteger(MQL_TESTER)) return false;
+   datetime t=UltTickSrv(sym), now=TimeTradeServer(); if(t<=0 || now<=0) return false;
+   return (long)(now-t)>5*60;
+}
+string MercadoTxt(string sym="")
+{
+   if(sym=="") sym=_Symbol;
+   datetime t=UltTickSrv(sym);
+   if(MercadoFechado(sym))
+      return "mercado FECHADO desde "+DataHoraBR(t)+" (Brasília). Sem tick ao vivo: os preços são do último fechamento, nada está se mexendo agora";
+   return "mercado ABERTO, último tick às "+(t>0?TimeToString(SrvParaBR(t),TIME_MINUTES):"?")+" (Brasília)";
+}
+// v12.4: regra de horário/mercado que vai em todo prompt de mercado
+string RegraHoraMercado()
+{
+   return " Todo horário que você citar é de Brasília (use hora_brasilia); nunca fale em 'horário do servidor'. "
+          "Se o campo mercado disser FECHADO, avise logo no começo que o mercado está fechado desde aquela hora e que os números são do último fechamento; nunca diga que está vendo ao vivo, no feed ou em tempo real.";
+}
 string TfSnap(string sym,ENUM_TIMEFRAMES tf)
 {
    MqlRates r[]; ArraySetAsSeries(r,true);
@@ -2862,8 +2902,8 @@ string News2hJSON()
       int m=(int)((g_news[i].t-now)/60);
       if(m<-5 || m>120) continue;
       string nm=g_news[i].nome; StringReplace(nm,"\\",""); StringReplace(nm,"\"","'");
-      out+=(out==""?"":",")+StringFormat("{\"hora\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",
-         TimeToString(g_news[i].t,TIME_DATE|TIME_MINUTES),m,g_news[i].cur,ImpTxt(g_news[i].imp),nm);
+      out+=(out==""?"":",")+StringFormat("{\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",
+         TimeToString(SrvParaBR(g_news[i].t),TIME_DATE|TIME_MINUTES),m,g_news[i].cur,ImpTxt(g_news[i].imp),nm);
       c++;
    }
    return "["+out+"]";
@@ -2963,7 +3003,7 @@ string ContextJSON()
    if(bid<=0 || ask<=0) return "";
    string st; SessaoNota(TimeTradeServer(),st);
    j+=StringFormat(",\"bid\":%s,\"ask\":%s,\"preco\":%s,\"spread\":%s",Fmt(bid),Fmt(ask),Fmt(bid),Fmt(ask-bid));
-   j+=",\"hora_servidor\":\""+TimeToString(TimeTradeServer(),TIME_DATE|TIME_MINUTES)+"\",\"hora_utc3\":\""+HoraUTC3()+"\"";
+   j+=",\"hora_brasilia\":\""+HoraUTC3()+"\",\"hora_utc3\":\""+HoraUTC3()+"\",\"mercado\":\""+JEsc(MercadoTxt())+"\"";
    j+=StringFormat(",\"sessao\":\"%s\",\"vies_dia\":\"%s\",\"tendencia_txt\":\"%s\"",JEsc(st),JEsc(g_biasTxt),JEsc(g_trendTxt));
    j+=",\"tendencias_detalhe\":{";
    for(int i=0;i<6;i++) j+=(i?",":"")+"\""+g_mtfNm[i]+"\":"+TfSnap(_Symbol,g_mtfTF[i]);
@@ -2978,7 +3018,7 @@ string ContextJSON()
    j+=",\"volume\":"+VolJSON();
    j+=",\"noticias\":"+NewsJSON()+",\"noticias_2h\":"+News2hJSON()+",\"bloqueio_noticia\":\""+JEsc(NoticiaAviso(TimeTradeServer()))+"\"";
    j+=",\"posicoes_abertas\":"+PosJSON();
-   j+=",\"conversa_recente\":"+MemJSON()+",\"fatos_do_vitor\":"+FatosJSON();
+   j+=",\"conversa_recente\":"+MemJSON()+",\"fatos_do_vitor\":"+(g_tgEmGrupo?"[]":FatosJSON());
    j+=",\"historico_veredictos\":"+VereditoStatsJSON();
    j+=",\"motor\":"+EngineJSON();
    j+=StringFormat(",\"hoje\":{\"trades\":%d,\"stops\":%d,\"resultado_usd\":%.2f,\"pare\":\"%s\"},\"robo\":{\"opera\":%s,\"status\":\"%s\",\"pausa_dd\":%s,\"pausa_tg\":%s}}",
@@ -3105,7 +3145,7 @@ string SysChatLivre()
           "A conversa recente já está no contexto: não repita o que você já disse. Se o Vitor reclamar de repetição, não peça desculpa e cole o mesmo bloco — mude o comportamento e responda só o que falta, de outro jeito, bem curto. "
           "Varie a abertura. Não comece com 'Fala mano' nem com 'ALIEN PROFESSOR:'. "
           "Nunca mencione o teste 2016-2025 nem diga que os sinais não tiveram edge neste tipo de resposta. "
-          "Nunca prometa lucro.";
+          "Nunca prometa lucro."+RegraHoraMercado();
 }
 string SysChatAnalise()
 {
@@ -3117,15 +3157,17 @@ string SysChatAnalise()
           "Alvo só vale com no mínimo 1,5R e do lado certo (compra: stop < entrada < alvo; venda: alvo < entrada < stop). Use os planos e alvos do contexto (campos internos, não imprima os nomes). Se não tiver alvo válido, diga que não tem setup naquele lado. "
           "Feche com uma linha VEREDITO: COMPRA ou VENDA ou ESPERAR (pode usar 🟢 🔴 🟡 junto, mas as palavras COMPRA/VENDA/ESPERAR têm que aparecer). Pode usar emoji úteis: 🟢 compra, 🔴 venda, 🟡 esperar, 💧 liquidez, ⚡ volume forte, 🎯 alvo, 🛑 stop, 📰 notícia. "
           "Varie a abertura. Não comece sempre com 'Fala mano'. Não repita a conversa recente. "
-          "Nunca prometa lucro. Se faltar dado, ESPERAR. Não mencione o teste 2016-2025; isso é acrescentado à parte.";
+          "Nunca prometa lucro. Se faltar dado, ESPERAR. Não mencione o teste 2016-2025; isso é acrescentado à parte."+RegraHoraMercado();
 }
 string SysChat(){ return SysChatAnalise(); }
 // ---- memória da conversa (últimas 10 mensagens) em MQL5\Files\ALIEN_chat_memoria.txt ----
 string g_mem[];
+// v12.4: memória separada por chat (privado do Vitor x grupo)
+string MemArq(){ return g_tgEmGrupo?"ALIEN_chat_memoria_grupo.txt":"ALIEN_chat_memoria.txt"; }
 void MemLoad()
 {
    ArrayResize(g_mem,0);
-   int h=FileOpen("ALIEN_chat_memoria.txt",FILE_READ|FILE_TXT|FILE_UNICODE|FILE_SHARE_READ); if(h==INVALID_HANDLE) return;
+   int h=FileOpen(MemArq(),FILE_READ|FILE_TXT|FILE_UNICODE|FILE_SHARE_READ); if(h==INVALID_HANDLE) return;
    while(!FileIsEnding(h)){ string l=FileReadString(h); if(l=="") continue; int k=ArraySize(g_mem); ArrayResize(g_mem,k+1); g_mem[k]=l; }
    FileClose(h);
 }
@@ -3133,13 +3175,16 @@ void MemAdd(string quem,string txt)
 {
    MemLoad();
    StringReplace(txt,"\r",""); StringReplace(txt,"\n"," / "); if(StringLen(txt)>700) txt=StringSubstr(txt,0,700)+"...";
-   int k=ArraySize(g_mem); ArrayResize(g_mem,k+1); g_mem[k]=TimeToString(TimeTradeServer(),TIME_DATE|TIME_MINUTES)+" "+quem+": "+txt;
+   int k=ArraySize(g_mem); ArrayResize(g_mem,k+1); g_mem[k]=TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES)+" "+quem+": "+txt;
    int st=MathMax(0,ArraySize(g_mem)-16);
-   int h=FileOpen("ALIEN_chat_memoria.txt",FILE_WRITE|FILE_TXT|FILE_UNICODE); if(h==INVALID_HANDLE) return;
+   int h=FileOpen(MemArq(),FILE_WRITE|FILE_TXT|FILE_UNICODE); if(h==INVALID_HANDLE) return;
    for(int i=st;i<ArraySize(g_mem);i++) FileWriteString(h,g_mem[i]+"\r\n");
    FileClose(h);
 }
-string MemTxt(){ MemLoad(); string fz=FatosTxt(); if(ArraySize(g_mem)==0) return fz; string s=fz+"CONVERSA RECENTE (mais antiga primeiro):\n"; for(int i=0;i<ArraySize(g_mem);i++) s+=g_mem[i]+"\n"; return s+"\n"; }
+// no grupo: sem os fatos pessoais do Vitor, e avisa quem está falando
+string QuemMsg(){ return g_tgEmGrupo?"MENSAGEM DE "+g_tgQuem+" (no grupo do Telegram do Vitor)":"MENSAGEM DO VITOR"; }
+string GrupoNota(){ return g_tgEmGrupo?" Você está no grupo do Telegram do Vitor; quem escreveu agora foi "+g_tgQuem+". Responda pra essa pessoa, curto.":""; }
+string MemTxt(){ MemLoad(); string fz=g_tgEmGrupo?"":FatosTxt(); if(ArraySize(g_mem)==0) return fz; string s=fz+"CONVERSA RECENTE (mais antiga primeiro):\n"; for(int i=0;i<ArraySize(g_mem);i++) s+=g_mem[i]+"\n"; return s+"\n"; }
 
 // ---- /analise em qualquer símbolo e tempo gráfico ----
 ENUM_TIMEFRAMES TfDe(string t)
@@ -3226,7 +3271,7 @@ string TFContextJSON(string sym,ENUM_TIMEFRAMES tf)
 {
    SymbolSelect(sym,true);
    double bid=SymbolInfoDouble(sym,SYMBOL_BID), ask=SymbolInfoDouble(sym,SYMBOL_ASK);
-   string j="{\"simbolo\":\""+sym+"\",\"tf_foco\":\""+TfNome(tf)+"\",\"hora_servidor\":\""+TimeToString(TimeTradeServer(),TIME_DATE|TIME_MINUTES)+"\",\"preco\":"+FmtS(sym,bid)+",\"spread\":"+FmtS(sym,ask-bid)+",\"tendencias\":{";
+   string j="{\"simbolo\":\""+sym+"\",\"tf_foco\":\""+TfNome(tf)+"\",\"hora_brasilia\":\""+HoraUTC3()+"\",\"mercado\":\""+JEsc(MercadoTxt(sym))+"\",\"preco\":"+FmtS(sym,bid)+",\"spread\":"+FmtS(sym,ask-bid)+",\"tendencias\":{";
    for(int i=0;i<6;i++) j+=(i?",":"")+"\""+g_mtfNm[i]+"\":"+IntegerToString(TrendTFs(sym,g_mtfTF[i]));
    double h2,l2; FVGz f2[];
    j+="},\"foco\":"+TfResumo(sym,tf,g_fHi,g_fLo,g_fFvg)+",\"tf_maior\":"+TfResumo(sym,TfMaior(tf),h2,l2,f2);
@@ -3268,6 +3313,19 @@ bool EhMercado(string t)
    string k[]={"compr","vend","entr","oper","trade","mercado","ouro","gold","xau","nasdaq","us500","dax","índice","indice","liquidez","fvg","bos","stop","alvo","tendên","tendenc","sinal","long","short","sell","buy","gráfico","grafico","preço","preco","notícia","noticia","analis","análise","agora","topo","fundo","varr"};
    for(int i=0;i<ArraySize(k);i++) if(StringFind(u,k[i])>=0) return true;
    return false;
+}
+// v12.4: pediu gráfico/print? (com mercado fechado só mando print se pedir)
+bool PedeGrafico(string t)
+{
+   string u=AISemAcento(t); StringToLower(u);
+   string k[]={"grafico","print","foto","imagem","chart","tela","screenshot","mostra o"};
+   for(int i=0;i<ArraySize(k);i++) if(StringFind(u,k[i])>=0) return true;
+   return false;
+}
+bool FotoDepoisDaResposta(string pergunta,bool explicito,string sym)
+{
+   if(!MercadoFechado(sym)) return true;
+   return explicito || PedeGrafico(pergunta);
 }
 bool TgFoto(string caption)
 {
@@ -3319,15 +3377,15 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
       }
       Plano b=MelhorPlano();
       SendMsg("A IA tá desligada agora (falta chave ou WebRequest). Segue a leitura do gráfico:\n"+EdgeSePreciso(Narrativa(b,g_pare!=""||NoticiaAviso(TimeTradeServer())!="",NoticiaAviso(TimeTradeServer()))));
-      if(fotoAlvo) FotoTF(sym,tf,sym+" "+TfNome(tf)); else TgFoto(FotoLegenda());
+      if(FotoDepoisDaResposta(pergunta,forcarPlano,sym)){ if(fotoAlvo) FotoTF(sym,tf,sym+" "+TfNome(tf)); else TgFoto(FotoLegenda()); }
       return;
    }
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
-   string sys=plano?SysChatAnalise():SysChatLivre();
+   string sys=(plano?SysChatAnalise():SysChatLivre())+GrupoNota();
    if(EhReclamaRepete(pergunta)) sys+=" O Vitor reclamou que você está repetindo. NÃO peça desculpa e cole o mesmo texto. Responda só o que falta, de outro jeito, bem curto.";
    int tok=plano?600:350;
    double temp=plano?0.2:0.6;
-   string r=AIAskEx(sys,MemTxt()+"CONTEXTO DO MERCADO:\n"+ctx+"\n\nMENSAGEM DO VITOR:\n"+pergunta,tok,false,plano,temp);
+   string r=AIAskEx(sys,MemTxt()+"CONTEXTO DO MERCADO:\n"+ctx+"\n\n"+QuemMsg()+":\n"+pergunta,tok,false,plano,temp);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=SemCamposCrus(r);
    if(plano) r=EdgeSePreciso(r);
@@ -3340,14 +3398,15 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
       r=StringSubstr(r,0,keep)+"\n...\n"+tail;
    }
    if(plano) VereditoLog("chat");
-   FatoTalvez(pergunta); MemAdd("Vitor",pergunta); MemAdd("Alier",r);
+   if(!g_tgEmGrupo) FatoTalvez(pergunta);
+   MemAdd(g_tgQuem,pergunta); MemAdd("Alier",r);
    if((sym=="" || sym==_Symbol) && plano) AIPanelSet(r);
    if((sym=="" || sym==_Symbol) && (plano || (mercado && !soNoticia))) ObsSet(r,plano?"🎯":"💬");
    string msg=r;
    if(titulo!="") msg=titulo+"\n"+r;
    if(plano) msg+="\n\n(opinião — quem decide é você)";
    SendMsg(msg);
-   if(plano || (mercado && !soNoticia && !EhReclamaRepete(pergunta)))
+   if((plano || (mercado && !soNoticia && !EhReclamaRepete(pergunta))) && FotoDepoisDaResposta(pergunta,forcarPlano,sym))
    {
       if(sym!="") FotoTF(sym,tf,sym+" "+TfNome(tf)+" às "+TimeToString(AgoraBR(),TIME_MINUTES)+" (Brasília)");
       else TgFoto(FotoLegenda());
@@ -3411,6 +3470,7 @@ string AjudaTxt()
           "/noticias - próximas notícias (Brasília)  |  /agenda - só as de hoje\n"
           "/foto - print com uma explicação curtinha\n"
           "/memoria - o que eu lembro de você  |  /esquece - apago\n"
+          "/grupo - (no grupo, só o Vitor) libera o grupo pra falar comigo\n"
           "Pode escrever sobre qualquer assunto, mandar áudio 🎤 ou foto 📷 (até print de gráfico de outro lugar). Eu também te aviso sozinho quando varrer liquidez, mudar a estrutura ou chegar num bloco importante.";
 }
 void TgHandle(string chat,string text)
@@ -3419,7 +3479,7 @@ void TgHandle(string chat,string text)
    string cmd,args; bool iscmd=ParseCmd(text,cmd,args);
    if(g_cfgTgChat=="")
    {
-      if(cmd=="/start")
+      if(cmd=="/start" && !g_tgEmGrupo)
       {
          // grava o chat id sozinho no ALIEN_config.txt: não precisa configurar nada
          CfgSalva("telegram_chat_id",chat); g_cfgTgChat=chat; g_tgHint="";
@@ -3428,10 +3488,11 @@ void TgHandle(string chat,string text)
       }
       return;
    }
-   if(chat!=g_cfgTgChat){ Print("Telegram: ignorei mensagem de um chat não autorizado (",chat,")"); return; }
+   if(!ChatAutorizado(chat)){ Print("Telegram: ignorei mensagem de um chat não autorizado (",chat,")"); return; }
    if(!iscmd){ string bc=BotaoCmd(text); if(bc!=""){ cmd=bc; args=""; iscmd=true; } }
-   Print("Telegram: comando ",cmd!=""?cmd:"(texto livre)");
-   if(!iscmd && DisciplinaMotivo(text)) return;
+   Print("Telegram: comando ",cmd!=""?cmd:"(texto livre)",g_tgEmGrupo?" (grupo)":"");
+   if(!iscmd && !g_tgEmGrupo && DisciplinaMotivo(text)) return;
+   if(cmd=="/grupo"){ SendMsg(g_tgEmGrupo?"Este grupo já tá liberado ✅ Me chama com /comando, marcando @"+BotUser()+" ou respondendo uma mensagem minha.":"Pra liberar um grupo: me adiciona nele e manda /grupo lá dentro (só você, Vitor)."); return; }
    if(cmd=="/start" || cmd=="/ajuda" || cmd=="/help"){ SendMsgKb(AjudaTxt()); return; }
    if(cmd=="/status"){ SendMsg(StatusTxt()); return; }
    if(cmd=="/noticias" || cmd=="/notícias"){ SendMsg(NoticiasTxt()); return; }
@@ -3471,15 +3532,72 @@ void TgHandle(string chat,string text)
       SendMsg("Deixa eu olhar o "+_Symbol+"..."); ChatIA("Olha o gráfico de agora com os números do contexto, no seu estilo informal, e fecha com VEREDITO.","ANÁLISE "+_Symbol,"",PERIOD_CURRENT,false,true); return;
    }
    if(iscmd){ SendMsg("Não peguei esse comando.\n\n"+AjudaTxt()); return; }
-   if(EhSoNoticia(text)){ MemAdd("Vitor",text); SendMsg(NoticiasTxt()); return; }
+   if(EhSoNoticia(text)){ MemAdd(g_tgQuem,text); SendMsg(NoticiasTxt()); return; }
    string fsy; ENUM_TIMEFRAMES ftf;
    if(ParseAlvo(text,false,fsy,ftf)) ChatIA(text,"",fsy,ftf);
    else ChatIA(text,"");
 }
+// ---- v12.4: grupo do Telegram ----
+bool ChatAutorizado(string chat){ return chat!="" && (chat==g_cfgTgChat || (g_cfgGrupo!="" && chat==g_cfgGrupo)); }
+string g_botUser=""; datetime g_botUserTent=0;
+string BotId(){ int k=StringFind(g_cfgTgToken,":"); return k>0?StringSubstr(g_cfgTgToken,0,k):""; }
+string BotUser()
+{
+   if(g_botUser!="") return g_botUser;
+   if(TgTokenOk() && TimeLocal()-g_botUserTent>600)
+   {
+      g_botUserTent=TimeLocal();
+      char data[],res[]; string rh;
+      int code=WebRequest("GET","https://api.telegram.org/bot"+g_cfgTgToken+"/getMe","",5000,data,res,rh);
+      if(code==200){ string u=JStrKey(CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8),"username"); if(u!="") g_botUser=u; }
+   }
+   if(g_botUser=="") return "Alierprofessorbot";
+   return g_botUser;
+}
+// tira um objeto JSON "chave":{...} do texto (ex.: reply_to_message), devolve o objeto em obj
+string JCorta(string r,string key,string &obj)
+{
+   obj=""; int k=StringFind(r,"\""+key+"\":{"); if(k<0) return r;
+   int a=StringFind(r,"{",k); int n=StringLen(r), dep=0; bool str=false; int e=-1;
+   for(int i=a;i<n;i++)
+   {
+      ushort c=StringGetCharacter(r,i);
+      if(str){ if(c=='\\') i++; else if(c=='"') str=false; continue; }
+      if(c=='"') str=true; else if(c=='{') dep++; else if(c=='}'){ dep--; if(dep==0){ e=i; break; } }
+   }
+   if(e<0) return r;
+   obj=StringSubstr(r,a,e-a+1);
+   return StringSubstr(r,0,k)+StringSubstr(r,e+1);
+}
+// tira a menção @bot do texto (sem ligar pra maiúscula)
+string SemMencao(string t,string user)
+{
+   string tl=t, at="@"+user; StringToLower(tl); StringToLower(at);
+   int k=StringFind(tl,at); if(k<0) return t;
+   string o=StringSubstr(t,0,k)+StringSubstr(t,k+StringLen(at)); StringTrimLeft(o); StringTrimRight(o);
+   return o;
+}
+bool TemMencao(string t,string user){ string tl=t, at="@"+user; StringToLower(tl); StringToLower(at); return StringFind(tl,at)>=0; }
+// comando de grupo endereçado a OUTRO bot (/status@OutroBot) -> não é pra mim
+bool CmdDeOutroBot(string t,string user)
+{
+   if(StringLen(t)<2 || StringGetCharacter(t,0)!='/') return false;
+   int sp=StringFind(t," "); string head=sp>0?StringSubstr(t,0,sp):t;
+   int at=StringFind(head,"@"); if(at<0) return false;
+   string suf=StringSubstr(head,at+1), u=user; StringToLower(suf); StringToLower(u);
+   return suf!=u;
+}
+void TgContexto(string chat,bool grupo,string quem){ g_tgReply=chat; g_tgEmGrupo=grupo; g_tgQuem=grupo?(quem!=""?quem:"alguém do grupo"):"Vitor"; }
+void TgContextoLimpa(){ g_tgReply=""; g_tgEmGrupo=false; g_tgQuem="Vitor"; }
+// renova a trava de quem lê o chat durante respostas demoradas (IA), pra outro gráfico não pegar a vez
+void TgMasterRenova(){ if(g_tgMaster && GlobalVariableCheck("APROF_TGM_ID") && GlobalVariableGet("APROF_TGM_ID")==g_inst) GlobalVariableSet("APROF_TGM_T",(double)TimeLocal()); }
+// offset mais novo gravado por qualquer gráfico (evita responder duas vezes a mesma mensagem)
+void TgOffSincroniza(){ string s=ArqLe(g_tgEstArq); if(s=="") return; string l[]; if(StringSplit(s,'\n',l)>0){ long o=StringToInteger(l[0]); if(o>g_tgOff) g_tgOff=o; } }
 void TgPoll()
 {
    if(!TgTokenOk() || !InpTgChat) return;
    g_tgMaster=TgMaster(); if(!g_tgMaster) return;
+   TgOffSincroniza();
    string url="https://api.telegram.org/bot"+g_cfgTgToken+"/getUpdates?timeout=0&limit=20&offset="+IntegerToString(g_tgOff);
    char data[],res[]; string rh; ResetLastError();
    int code=WebRequest("GET",url,"",5000,data,res,rh);
@@ -3493,12 +3611,30 @@ void TgPoll()
       int nx=StringFind(r,"\"update_id\":",k+12);
       string seg= nx>0 ? StringSubstr(r,k,nx-k) : StringSubstr(r,k);
       long uid=StringToInteger(JNumKey(seg,"update_id"));
-      if(uid>=g_tgOff){ g_tgOff=uid+1; mudou=true; }
       pos= nx>0 ? nx : StringLen(r);
+      if(uid<g_tgOff) continue;                               // já atendida (por este ou outro gráfico)
+      g_tgOff=uid+1; mudou=true;
+      // a mensagem respondida vem junto: tira pra não ler o texto/foto dela no lugar da nova
+      string rep; seg=JCorta(seg,"reply_to_message",rep);
       int cpos=StringFind(seg,"\"chat\":"); if(cpos<0) continue;
       string chat=JNumKey(seg,"id",cpos);
+      string tipo=JStrKey(StringSubstr(seg,cpos),"type");
+      bool grupo=(tipo=="group" || tipo=="supergroup");
+      int fpos=StringFind(seg,"\"from\":");
+      string fromId= fpos>=0 ? JNumKey(seg,"id",fpos) : "";
+      string quem= fpos>=0 ? JStrKey(StringSubstr(seg,fpos),"first_name") : "";
+      int rf=StringFind(rep,"\"from\":");
+      bool aoBot=(rf>=0 && BotId()!="" && JNumKey(rep,"id",rf)==BotId());
+      // grupo virou supergrupo: o número muda
+      if(grupo && g_cfgGrupo!="" && chat==g_cfgGrupo && StringFind(seg,"\"migrate_to_chat_id\":")>=0)
+      {
+         string nid=JNumKey(seg,"migrate_to_chat_id");
+         if(nid!=""){ g_cfgGrupo=nid; CfgSalva("telegram_grupo_id",nid); Print("ALIEN: grupo migrou, número novo salvo"); }
+         continue;
+      }
       string text="";
-      if(StringFind(seg,"\"callback_query\"")>=0)
+      bool cb=StringFind(seg,"\"callback_query\"")>=0;
+      if(cb)
       {
          // botão apertado: vale mesmo se a mensagem do botão for antiga
          text=JStrKey(seg,"data");
@@ -3508,25 +3644,52 @@ void TgPoll()
       {
          long dt=StringToInteger(JNumKey(seg,"date"));
          if(dt>0 && dt<(long)g_tgStartUtc-120) continue;     // mensagem velha (antes do robô ligar)
+         if(grupo && !ChatAutorizado(chat))
+         {
+            // /grupo do Vitor (dono) libera este grupo
+            string t0=JStrKey(seg,"text"); string c0,a0;
+            if(ParseCmd(t0,c0,a0) && c0=="/grupo" && !CmdDeOutroBot(t0,BotUser()) && g_cfgTgChat!="" && fromId==g_cfgTgChat)
+            {
+               g_cfgGrupo=chat; CfgSalva("telegram_grupo_id",chat);
+               Print("ALIEN: grupo liberado e salvo em MQL5\\Files\\ALIEN_config.txt");
+               if(mudou) TgEstadoSave(); mudou=false;
+               TgContexto(chat,true,quem);
+               SendMsg("Pronto, liberei este grupo ✅ Aqui eu respondo comandos (/status, /analise...), quando me marcam (@"+BotUser()+") ou quando respondem uma mensagem minha. Os avisos automáticos continuam só no privado do Vitor.");
+               TgContextoLimpa();
+            }
+            continue;
+         }
          int fp=StringFind(seg,"\"photo\":[");
+         int vp=StringFind(seg,"\"voice\":{");
+         string cap=JStrKey(seg,"caption");
+         if(grupo && (fp>=0 || vp>=0) && !aoBot && !TemMencao(cap,BotUser())) continue;   // foto/áudio do grupo só se for pra mim
          if(fp>=0)
          {
             // a última versão da foto é a maior
             string ph=StringSubstr(seg,fp); int fe=StringFind(ph,"]"); if(fe>0) ph=StringSubstr(ph,0,fe);
             string fid=""; int q=0; while(true){ int z=StringFind(ph,"\"file_id\":\"",q); if(z<0) break; fid=JDecode(ph,z+10); q=z+1; }
-            if(chat==g_cfgTgChat && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; FotoHandle(chat,fid,JStrKey(seg,"caption")); }
+            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); FotoHandle(chat,fid,SemMencao(cap,BotUser())); TgContextoLimpa(); TgMasterRenova(); }
             continue;
          }
-         int vp=StringFind(seg,"\"voice\":{");
          if(vp>=0)
          {
             string fid=JStrKey(StringSubstr(seg,vp),"file_id");
-            if(chat==g_cfgTgChat && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; VozHandle(chat,fid); }
+            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); VozHandle(chat,fid); TgContextoLimpa(); TgMasterRenova(); }
             continue;
          }
          text=JStrKey(seg,"text");
+         if(grupo)
+         {
+            // no grupo: só comando pra mim, menção @bot ou resposta a uma mensagem minha
+            if(CmdDeOutroBot(text,BotUser())) continue;
+            bool ehCmd=StringLen(text)>0 && StringGetCharacter(text,0)=='/';
+            bool men=TemMencao(text,BotUser());
+            if(!ehCmd && !men && !aoBot) continue;
+            if(men) text=SemMencao(text,BotUser());
+            if(text=="") text="oi";
+         }
       }
-      if(chat!="" && text!=""){ if(mudou) TgEstadoSave(); mudou=false; TgHandle(chat,text); }
+      if(chat!="" && text!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); TgHandle(chat,text); TgContextoLimpa(); TgMasterRenova(); }
    }
    if(mudou) TgEstadoSave();
 }
@@ -3622,8 +3785,9 @@ bool SendJsonMsg(string chat,string text,string markup)
    if(code!=200) Print("Telegram respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
-bool SendMsgKb(string text){ if(!TgOk()) return false; return SendJsonMsg(g_cfgTgChat,text,TgKbFixo()); }
-bool SendMsgMarkup(string text,string markup){ if(!TgOk()) return false; return SendJsonMsg(g_cfgTgChat,text,markup); }
+// teclado fixo só no privado; no grupo vai o texto sem teclado
+bool SendMsgKb(string text){ if(!TgOk()) return false; if(g_tgEmGrupo) return SendJsonMsg(TgDestino(),text,""); return SendJsonMsg(TgDestino(),text,TgKbFixo()); }
+bool SendMsgMarkup(string text,string markup){ if(!TgOk()) return false; return SendJsonMsg(TgDestino(),text,markup); }
 void TgAckCb(string qid)
 {
    if(!TgTokenOk() || qid=="") return;
@@ -4132,7 +4296,13 @@ void ParadaBatimento(){ ParadaGrava(1,-1); }
 bool VolteiPode()
 {
    string s=ArqLe("ALIEN_voltei.txt"); long t=StringToInteger(s);
-   return (t<=0 || (long)TimeGMT()-t>=15*60);
+   if(!(t<=0 || (long)TimeGMT()-t>=15*60)) return false;
+   // v12.4: trava atômica (dois gráficos ou religada rápida do MT5 ligando juntos -> só UMA mensagem)
+   string g="APROF_OI_T"; double now=(double)TimeGMT();
+   if(!GlobalVariableCheck(g)) GlobalVariableSet(g,0);
+   double old=GlobalVariableGet(g);
+   if(now-old<15*60) return false;
+   return GlobalVariableSetOnCondition(g,now,old);
 }
 void VolteiMarca(){ ArqGrava("ALIEN_voltei.txt",IntegerToString((long)TimeGMT())); }
 string ModoTxt(){ return TradeAtivo()?"operando na demo, dentro dos limites":(g_tradePausa?"pausado (você mandou pausar)":"modo assistente: só analiso e aviso, não mando ordem"); }
@@ -4237,13 +4407,14 @@ string FatosTxt(){ string f[]; FatosLe(f); if(ArraySize(f)==0) return ""; string
 string MemoriaTxt()
 {
    string f[]; FatosLe(f); MemLoad();
+   if(g_tgEmGrupo) return StringFormat("🧠 Neste grupo eu lembro das últimas %d mensagens da conversa. As coisas pessoais do Vitor ficam só no privado. Pra eu esquecer a conversa do grupo: /esquece",ArraySize(g_mem));
    string s="🧠 O que eu lembro:\n";
    if(ArraySize(f)==0) s+="Ainda nada sobre você. Se quiser, me conta tipo \"eu prefiro operar só em Londres\" que eu guardo.\n";
    else for(int i=0;i<ArraySize(f);i++) s+="• "+f[i]+"\n";
    s+=StringFormat("E as últimas %d mensagens da conversa. Pra eu esquecer tudo: /esquece",ArraySize(g_mem));
    return s;
 }
-void MemoriaApaga(){ ArqGrava(g_fatosArq,""); ArqGrava("ALIEN_chat_memoria.txt",""); ArrayResize(g_mem,0); }
+void MemoriaApaga(){ if(!g_tgEmGrupo) ArqGrava(g_fatosArq,""); ArqGrava(MemArq(),""); ArrayResize(g_mem,0); }
 
 // ---------------- 7. áudio do Telegram -> Gemini ----------------
 bool BaixaUrl(string url,uchar &out[],int timeout=15000)
@@ -4324,11 +4495,12 @@ void FotoHandle(string chat,string fileId,string legenda)
       string ctx=ContextJSON();
       if(ContextValido(ctx)) pedido+="\nPara comparar, a leitura do "+_Symbol+" no MT5 agora (números confiáveis do robô): "+StringSubstr(ctx,0,3500);
    }
-   string m=FatosTxt(); if(m!="") pedido+="\n"+m;
+   string m=g_tgEmGrupo?"":FatosTxt(); if(m!="") pedido+="\n"+m;
+   pedido+=GrupoNota();
    string t=GeminiMidia(img,"image/jpeg",pedido,700,0.4,erro);
    if(t==""){ SendMsg(erro=="limite grátis do Google"?"A IA grátis do Google tá no limite agora 😅 Me manda a foto de novo em 1 minutinho.":"Não consegui analisar a foto agora ("+erro+"). Tenta de novo daqui a pouco."); return; }
    t=AISemVeredito(t);
-   MemAdd("Vitor","[mandou uma foto] "+legenda); MemAdd("Alier",t);
+   MemAdd(g_tgQuem,"[mandou uma foto] "+legenda); MemAdd("Alier",t);
    SendMsg("👀 "+t);
    if(mercado) ObsSet(t,"👀");
 }
@@ -4338,16 +4510,19 @@ string SysGeral()
    return "Você é o Alier, assistente pessoal do Vitor no Telegram (ele é barbeiro e estuda trading). Ajuda em qualquer assunto: dúvidas, contas, textos, ideias, saúde do dia a dia, estudo. "
           "Português do Brasil, informal e acolhedor, curto (1 a 5 frases, a não ser que ele peça mais). Sem markdown. "
           "Se não souber ou for algo que muda rápido (notícia de hoje, preço, placar), diga que não tem acesso à internet em tempo real. "
+          "Horários sempre de Brasília. Se AGORA disser mercado FECHADO, nunca diga que está vendo o mercado ao vivo. "
           "Se ele parecer muito mal ou falar em se machucar, acolha e lembre do CVV: ligue 188 (grátis, 24h). "
           "Use o que você sabe dele e a conversa recente, sem repetir o que já disse. Nunca prometa lucro.";
 }
 void ChatGeral(string pergunta)
 {
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
-   string r=AIAskEx(SysGeral(),MemTxt()+"MENSAGEM DO VITOR:\n"+pergunta,500,false,false,0.7);
+   string agora="AGORA: "+TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES)+" (Brasília); "+MercadoTxt()+".\n";
+   string r=AIAskEx(SysGeral()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=AISemVeredito(SemCamposCrus(r));
-   FatoTalvez(pergunta); MemAdd("Vitor",pergunta); MemAdd("Alier",r);
+   if(!g_tgEmGrupo) FatoTalvez(pergunta);
+   MemAdd(g_tgQuem,pergunta); MemAdd("Alier",r);
    SendMsg(r);
 }
 void VozHandle(string chat,string fileId)
