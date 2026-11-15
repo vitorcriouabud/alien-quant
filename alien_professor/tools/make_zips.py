@@ -47,7 +47,7 @@ if os.path.isfile(VITOR_SET):
            "gemini_chave_2=" + v.get("InpGeminiKey2", "") + "\r\n"
            "# modo assistente: so analisa e avisa. Apague a linha abaixo se quiser que ele opere na DEMO.\r\n"
            "modo=assistente\r\n")
-    leia = ("ALIEN PROFESSOR 12.4 - KIT PESSOAL DO VITOR\r\n\r\n"
+    leia = ("ALIEN PROFESSOR 12.5 - KIT PESSOAL DO VITOR\r\n\r\n"
             "ESTE ZIP TEM SUAS CHAVES no arquivo config\\ALIEN_config.txt. NAO compartilhe este zip.\r\n"
             "Se vazar: /revoke no @BotFather e apague as chaves em aistudio.google.com.\r\n\r\n"
             "COMO USAR\r\n"

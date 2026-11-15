@@ -638,7 +638,7 @@ def test_tom_livre():
     livre = chat[chat.find("string SysChatLivre"):chat.find("string SysChatAnalise")]
     analise = chat[chat.find("string SysChatAnalise"):chat.find("string SysChat()")]
     assert "SOMENTE" in livre and "1 a 4" in livre
-    assert "WhatsApp" in livre
+    assert "Telegram" in livre and "WhatsApp" not in livre
     assert "não peça desculpa e cole o mesmo bloco" in livre or "nao peca desculpa" in _norm(livre)
     assert "Fala mano" in livre and "Não comece" in livre
     assert "Uma linha honesta" not in livre
@@ -716,7 +716,7 @@ def test_grupo():
     ln = open(os.path.join(ROOT, "src", "auto_learn.mqh"), encoding="utf-8").read()
     ag = open(os.path.join(ROOT, "src", "auto_agente.mqh"), encoding="utf-8").read()
     hd = open(os.path.join(ROOT, "src", "auto_head.mq5"), encoding="utf-8").read()
-    assert '#define APROF_VER "12.4"' in hd
+    assert '#define APROF_VER "12.5"' in hd
     assert 'k=="telegram_grupo_id"' in tg and 'k=="grupo_alertas"' in tg
     assert 'c0=="/grupo"' in ch and "fromId==g_cfgTgChat" in ch and 'CfgSalva("telegram_grupo_id",chat)' in ch
     assert "if(g_tgEmGrupo) return SendJsonMsg(TgDestino(),text,\"\")" in ln      # sem teclado no grupo
@@ -750,6 +750,7 @@ def main():
     test_preset_vitor()
     test_balao()
     test_grupo()
+    test_contexto_v125()
     print("ok all mocks")
     return 0
 
@@ -938,6 +939,62 @@ def test_preset_vitor():
     ss=open(ROOT+"/kit/presets/ALIEN_PROFESSOR_AUTO_seguro.set").read()
     assert "InpAllowRealAccount=false" in ss
     print("ok presets")
+
+# ===================== v12.5 (contexto da IA: dia/hora, reabertura, agenda) =====================
+DIAS=["segunda","terça","quarta","quinta","sexta","sábado","domingo"]   # weekday() do Python
+def dia_hora_br(br, ano=False):
+    s="%s %02d/%02d" % (DIAS[br.weekday()], br.day, br.month)
+    if ano: s+="/%04d" % br.year
+    return s+" %02d:%02d" % (br.hour, br.minute)
+def ny_para_gmt(ny): return ny+_dt.timedelta(hours=ny_offset(ny+_dt.timedelta(hours=5)))
+def grade_ouro(gmt):
+    """espelha GradeOuro: 0 aberto, 1 pausa diária, 2 fim de semana; devolve (estado, virada GMT)"""
+    ny=gmt-_dt.timedelta(hours=ny_offset(gmt)); hm=ny.hour*60+ny.minute
+    dia=ny.replace(hour=0,minute=0,second=0); w=(ny.weekday()+1)%7      # 0=domingo como no MQL
+    if (w==5 and hm>=17*60) or w==6 or (w==0 and hm<18*60):
+        ate={5:2,6:1,0:0}[w]; return 2, ny_para_gmt(dia+_dt.timedelta(days=ate,hours=18))
+    if 1<=w<=4 and 17*60<=hm<18*60: return 1, ny_para_gmt(dia+_dt.timedelta(hours=18))
+    return 0, ny_para_gmt(dia+_dt.timedelta(hours=17) if hm<17*60 else dia+_dt.timedelta(days=1,hours=17))
+def mercado_agora(gmt, sem_tick):
+    br=gmt-_dt.timedelta(hours=3); st,muda=grade_ouro(gmt)
+    s="AGORA: "+dia_hora_br(br,True)+" (Brasília)."
+    if sem_tick and st!=0: s+=" FECHADO. REABRE "+dia_hora_br(muda-_dt.timedelta(hours=3))+" Brasília"
+    elif not sem_tick and st==0: s+=" ABERTO. Próxima parada: "+dia_hora_br(muda-_dt.timedelta(hours=3))
+    return s
+def test_contexto_v125():
+    # domingo 15/11/2026 15:10 Brasília, NY em EST -> reabre 20:00 Brasília (bug real: a IA falou '18h' e 'antes de domingo')
+    a=mercado_agora(_dt.datetime(2026,11,15,18,10), True)
+    assert "domingo 15/11/2026 15:10" in a and "REABRE domingo 15/11 20:00" in a, a
+    # domingo em junho (NY em EDT) -> 19:00 Brasília
+    b=mercado_agora(_dt.datetime(2026,6,14,18,10), True)
+    assert "domingo 14/06/2026" in b and "REABRE domingo 14/06 19:00" in b, b
+    # sábado -> domingo 20:00; sexta 19:30 BR (EST) já fechou
+    assert "REABRE domingo 15/11 20:00" in mercado_agora(_dt.datetime(2026,11,14,15,0), True)
+    assert "REABRE domingo 22/11 20:00" in mercado_agora(_dt.datetime(2026,11,20,22,30), True)
+    # pausa diária: terça 19:30 BR (EST) -> reabre 20:00 do mesmo dia
+    assert "REABRE terça 17/11 20:00" in mercado_agora(_dt.datetime(2026,11,17,22,30), True)
+    # aberto: terça 11:00 BR -> próxima parada 19:00; sexta 15:00 -> fecha 19:00
+    assert "Próxima parada: terça 17/11 19:00" in mercado_agora(_dt.datetime(2026,11,17,14,0), False)
+    assert "Próxima parada: sexta 20/11 19:00" in mercado_agora(_dt.datetime(2026,11,20,18,0), False)
+    # saída real do MQL (rodado no testador do MT5 com tools/ALIEN_CTX_TESTE.mq5)
+    real=open(ROOT+"/tools/ALIEN_CTX_TESTE_saida.txt",encoding="utf-8").read()
+    assert "dom_est | AGORA: domingo 15/11/2026 15:10 (Brasília)" in real and "REABRE domingo 15/11 20:00 Brasília (em 4h50min)" in real
+    assert "REABRE domingo 14/06 19:00 Brasília" in real and "pausa diária seg-qui 18:00-19:00" in real
+    # fonte: contexto em todo prompt de IA do chat
+    cx=_src("auto_ctx.mqh"); ch=_src("auto_chat.mqh"); ag=_src("auto_agente.mqh"); tl=_src("auto_tail.mq5")
+    assert "string MercadoAgoraTxt(" in cx and "EngNyOffset" in cx and "Você TEM esta agenda" in cx
+    assert "CalendarValueHistory(v,now-7*86400,now+7*86400" in cx and "HasForecastValue" in cx and "CALENDAR_TYPE_HOLIDAY" in cx
+    assert "nunca diga que não vê notícias" in cx and "Não invente horário, preço" in cx and "15-30 min" in cx and "gap" in cx
+    assert "CtxIA(pergunta,true,abert)" in ch and 'CtxIA("",true,false)' in ch and "RegraContextoIA(true)" in ch and "RegraContextoIA(false)" in ch
+    assert "CtxIA(pergunta,EhPerguntaAgenda(pergunta),EhPerguntaAbertura(pergunta))" in ag and "CtxIA(legenda" in ag
+    assert "não tem acesso à internet em tempo real" not in ag and "agenda econômica e o preço do ouro você TEM" in ag
+    assert tl.count("AIAsk(AgoraCurtoIA()+StateJSON(")==3
+    assert "hora_utc3" not in ch and '"abertura","reabr"' in ch
+    assert "não faça pergunta pessoal" in ch and "barbearia" in ch[ch.find("string GrupoNota"):ch.find("string MemTxt")]
+    geral=ag[ag.find("string SysGeral"):ag.find("void ChatGeral")]
+    assert "g_tgEmGrupo?" in geral                                       # no grupo não cita barbearia/vida pessoal
+    assert "auto_ctx.mqh" in open(ROOT+"/tools/build.sh").read()
+    print("ok contexto v12.5: dia da semana, reabertura EST 20:00 / EDT 19:00, agenda 7 dias, grupo sem pergunta pessoal")
 
 if __name__ == "__main__":
     sys.exit(main())
