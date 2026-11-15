@@ -1,0 +1,54 @@
+KIT DE TESTE COM UM CLIQUE
+===========================
+
+Este kit roda o teste do seu robô no MetaTrader 5
+usando ticks REAIS (o teste que vale de verdade).
+
+Ele NÃO opera na sua conta real.
+Ele NÃO mexe na conta da mesa (Goat).
+Ele só abre o testador, espera o teste acabar
+e cria um zip na Área de Trabalho para você me enviar.
+
+Antes de começar:
+- Na primeira vez, o teste pode demorar bastante
+  (meia hora, ou até mais). O MT5 precisa baixar
+  os ticks reais. Deixe o computador ligado,
+  com internet, e não feche a janela preta.
+- Se puder, feche o navegador e outros programas.
+  Seu notebook tem 8 GB de memória, e esse teste é pesado.
+
+
+COMO USAR (3 PASSOS)
+--------------------
+
+1) Confira se o robô ALIEN_V11_SCALPER já aparece
+   no seu MetaTrader, em Navegador > Expert Advisors.
+   Você já tem ele instalado.
+
+2) Abra o MetaTrader na conta DEMO da RoboForex
+   (não entre na conta da mesa), e depois feche o MetaTrader.
+   Isso garante que o testador use só a demo.
+
+3) Dê dois cliques no arquivo TESTAR.bat e espere.
+   Quando terminar, abre a Área de Trabalho com o arquivo:
+
+      RESULTADO_PARA_O_GROK_....zip
+
+   É esse zip que você me envia.
+
+
+SE ALGO DER ERRADO
+------------------
+- Se o Windows avisar que o arquivo é desconhecido,
+  clique em "Mais informações" e depois em "Executar assim mesmo".
+- Se aparecer um aviso pedindo para fechar o MetaTrader,
+  feche ele e aperte ENTER.
+- Se o kit não achar o MetaTrader, abra o CONFIG.txt
+  com o Bloco de Notas e cole o caminho da pasta do MT5
+  na linha MT5_CAMINHO=
+  Exemplo:
+  MT5_CAMINHO=C:\Program Files\RoboForex MT5 Terminal
+- Não mude a linha Modelo=4. Esse é o modo de ticks reais.
+
+Pode me mandar o zip mesmo se o teste der erro.
+O zip também leva os registros, e isso me ajuda a corrigir.
