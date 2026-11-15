@@ -135,7 +135,7 @@ string HistResumo(const Plano &b)
 // estado do professor em JSON compacto (para a IA)
 string StateJSON(const Plano &b)
 {
-   string j="{\"simbolo\":\""+_Symbol+"\",\"hora_servidor\":\""+TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES)+"\",\"tendencias\":{";
+   string j="{\"simbolo\":\""+_Symbol+"\",\"hora_brasilia\":\""+TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES)+"\",\"tendencias\":{";
    for(int i=0;i<6;i++) j+=(i?",":"")+"\""+g_mtfNm[i]+"\":"+IntegerToString(g_mtf[i]);
    j+="},\"niveis\":[";
    for(int v=0;v<ArraySize(g_niv);v++) j+=(v?",":"")+StringFormat("{\"n\":\"%s\",\"p\":%s,\"e\":\"%s\"}",JEsc(g_niv[v].nome),Fmt(g_niv[v].preco),g_niv[v].estado==ST_VARRIDA?"varrida":(g_niv[v].estado==ST_ROMPIDO?"rompido":"intacto"));

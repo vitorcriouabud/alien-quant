@@ -569,7 +569,7 @@ string NewsJSON()
    {
       if(g_news[i].t<now-3600) continue;
       string nm=g_news[i].nome; StringReplace(nm,"\\",""); StringReplace(nm,"\"","'");
-      s+=(s==""?"":",")+StringFormat("{\"hora\":\"%s\",\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",TimeToString(g_news[i].t,TIME_DATE|TIME_MINUTES),TimeToString(SrvParaBR(g_news[i].t),TIME_MINUTES),(int)((g_news[i].t-now)/60),g_news[i].cur,ImpTxt(g_news[i].imp),nm);
+      s+=(s==""?"":",")+StringFormat("{\"data_brasilia\":\"%s\",\"hora_brasilia\":\"%s\",\"min\":%d,\"moeda\":\"%s\",\"impacto\":\"%s\",\"evento\":\"%s\"}",TimeToString(SrvParaBR(g_news[i].t),TIME_DATE),TimeToString(SrvParaBR(g_news[i].t),TIME_MINUTES),(int)((g_news[i].t-now)/60),g_news[i].cur,ImpTxt(g_news[i].imp),nm);
       n++;
    }
    return "["+s+"]";

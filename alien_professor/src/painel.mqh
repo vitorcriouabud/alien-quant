@@ -290,7 +290,7 @@ void PainelDesenhaDash()
    if(g_aiPanelT>0)
    {
       PainelFonte(f-2,false);
-      g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(g_aiPanelT,TIME_MINUTES)+" (hora do servidor)",ColorToARGB(clrSilver,255));
+      g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(SrvParaBR(g_aiPanelT),TIME_MINUTES)+" (Brasília)",ColorToARGB(clrSilver,255));
    }
    y=boxY+boxH+6;
 
