@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.tmp
+resultados/
+*.zip
+ALIEN_LAB_M1_XAUUSD.csv
