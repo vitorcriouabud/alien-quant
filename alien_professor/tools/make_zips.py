@@ -37,6 +37,8 @@ def le_set(path):
 
 if os.path.isfile(VITOR_SET):
     v = le_set(VITOR_SET)
+    if not v.get("InpTelegramChatId") and os.environ.get("ALIEN_VITOR_CHAT"):
+        v["InpTelegramChatId"] = os.environ["ALIEN_VITOR_CHAT"]   # chat id vem do ambiente (fora do git)
     cfg = ("# ALIEN - configuracao pessoal do Vitor. NAO compartilhe este arquivo.\r\n"
            "# Fica em MQL5\\Files\\ALIEN_config.txt. Atualizar o robo nao apaga.\r\n"
            "telegram_token=" + v.get("InpTelegramToken", "") + "\r\n"
@@ -45,7 +47,7 @@ if os.path.isfile(VITOR_SET):
            "gemini_chave_2=" + v.get("InpGeminiKey2", "") + "\r\n"
            "# modo assistente: so analisa e avisa. Apague a linha abaixo se quiser que ele opere na DEMO.\r\n"
            "modo=assistente\r\n")
-    leia = ("ALIEN PROFESSOR 12.3 - KIT PESSOAL DO VITOR\r\n\r\n"
+    leia = ("ALIEN PROFESSOR 12.4 - KIT PESSOAL DO VITOR\r\n\r\n"
             "ESTE ZIP TEM SUAS CHAVES no arquivo config\\ALIEN_config.txt. NAO compartilhe este zip.\r\n"
             "Se vazar: /revoke no @BotFather e apague as chaves em aistudio.google.com.\r\n\r\n"
             "COMO USAR\r\n"
@@ -53,7 +55,8 @@ if os.path.isfile(VITOR_SET):
             "   libera o WebRequest e copia sua configuracao se ela ainda nao existir).\r\n"
             "2. Abra o MT5 e arraste Consultor expert > ALIEN > ALIEN_PROFESSOR_AUTO no grafico XAUUSD M1.\r\n"
             "   Nao precisa carregar preset nem mexer em parametro.\r\n"
-            "3. No Telegram use os botoes ou mande /ajuda.\r\n\r\n"
+            "3. No Telegram use os botoes ou mande /ajuda.\r\n"
+            "4. No grupo, mande /grupo uma vez (voce, Vitor) pra liberar.\r\n\r\n"
             "IMPORTANTE: use so o ALIEN_PROFESSOR_AUTO. NAO ligue o ALIEN_PROFESSOR_TELEGRAM junto (mensagens dobradas).\r\n"
             "Vem em MODO ASSISTENTE (so analisa e avisa).\r\n"
             "Atualizar no futuro: feche o MT5 e de dois cliques no ATUALIZAR.bat (baixa do GitHub). Sua configuracao nunca e apagada.\r\n"

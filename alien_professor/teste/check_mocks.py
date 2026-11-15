@@ -675,6 +675,58 @@ def test_instalar():
     print("ok instalar + subir github + config local")
 
 
+# ===================== v12.4 (grupo) =====================
+def jcorta(r, key):
+    k = r.find('"' + key + '":{')
+    if k < 0: return r, ""
+    a = r.find("{", k); dep = 0; st = False; i = a; e = -1
+    while i < len(r):
+        c = r[i]
+        if st:
+            if c == "\\": i += 1
+            elif c == '"': st = False
+        elif c == '"': st = True
+        elif c == "{": dep += 1
+        elif c == "}":
+            dep -= 1
+            if dep == 0: e = i; break
+        i += 1
+    if e < 0: return r, ""
+    return r[:k] + r[e+1:], r[a:e+1]
+
+def cmd_de_outro_bot(t, user):
+    if len(t) < 2 or t[0] != "/": return False
+    head = t.split(" ")[0]
+    if "@" not in head: return False
+    return head.split("@", 1)[1].lower() != user.lower()
+
+def test_grupo():
+    upd = ('"update_id":5,"message":{"message_id":9,"from":{"id":111,"is_bot":false,"first_name":"Yuri"},'
+           '"chat":{"id":-1001,"title":"G","type":"supergroup"},"date":1,'
+           '"reply_to_message":{"message_id":8,"from":{"id":999,"is_bot":true,"first_name":"Alier"},"chat":{"id":-1001,"type":"supergroup"},"date":1,"text":"texto {velho} \\"x\\""},'
+           '"text":"e agora?"}')
+    seg, rep = jcorta(upd, "reply_to_message")
+    assert '"text":"e agora?"' in seg and "velho" not in seg and '"id":999' in rep
+    assert json.loads(rep)["from"]["id"] == 999
+    assert cmd_de_outro_bot("/status@OutroBot", "Alierprofessorbot")
+    assert not cmd_de_outro_bot("/status@alierprofessorbot", "Alierprofessorbot")
+    assert not cmd_de_outro_bot("/status", "Alierprofessorbot")
+    ch = open(os.path.join(ROOT, "src", "auto_chat.mqh"), encoding="utf-8").read()
+    tg = open(os.path.join(ROOT, "src", "auto_tg.mqh"), encoding="utf-8").read()
+    ln = open(os.path.join(ROOT, "src", "auto_learn.mqh"), encoding="utf-8").read()
+    ag = open(os.path.join(ROOT, "src", "auto_agente.mqh"), encoding="utf-8").read()
+    hd = open(os.path.join(ROOT, "src", "auto_head.mq5"), encoding="utf-8").read()
+    assert '#define APROF_VER "12.4"' in hd
+    assert 'k=="telegram_grupo_id"' in tg and 'k=="grupo_alertas"' in tg
+    assert 'c0=="/grupo"' in ch and "fromId==g_cfgTgChat" in ch and 'CfgSalva("telegram_grupo_id",chat)' in ch
+    assert "if(g_tgEmGrupo) return SendJsonMsg(TgDestino(),text,\"\")" in ln      # sem teclado no grupo
+    assert "g_tgReply==\"\" && g_cfgGrupoAlertas" in tg                            # avisos no grupo só com grupo_alertas=1
+    assert "hora_servidor" not in ch and "(hora do servidor)" not in open(os.path.join(ROOT, "src", "painel.mqh"), encoding="utf-8").read()
+    assert "mercado FECHADO desde" in ch and "FotoDepoisDaResposta" in ch
+    assert "GlobalVariableSetOnCondition" in ag                                    # 'ligado' só uma vez
+    assert "if(uid<g_tgOff) continue;" in ch and "TgOffSincroniza();" in ch       # sem resposta dobrada
+    print("ok grupo, horario Brasilia, mercado fechado, sem duplicar")
+
 def main():
     test_json_body()
     test_context()
@@ -697,6 +749,7 @@ def main():
     test_voz_body()
     test_preset_vitor()
     test_balao()
+    test_grupo()
     print("ok all mocks")
     return 0
 
@@ -758,7 +811,7 @@ def test_resposta_curta():
     assert "Plano" in so_resposta_curta(c)
     ch = _src("auto_chat.mqh")
     assert "if(StringFind(u,k[i])==0) p=0;" in ch           # CorteBloco corta no começo também
-    assert 'if(EhSoNoticia(text)){ MemAdd("Vitor",text); SendMsg(NoticiasTxt()); return; }' in ch
+    assert 'if(EhSoNoticia(text)){ MemAdd(g_tgQuem,text); SendMsg(NoticiasTxt()); return; }' in ch
     print("ok resposta curta / noticia local")
 
 def custo_livre(t):
