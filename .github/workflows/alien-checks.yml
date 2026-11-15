@@ -1,0 +1,27 @@
+name: alien-checks
+# Nao compila nada (MetaEditor so roda no Windows). Roda os testes Python e procura chave vazada.
+on:
+  push:
+    branches: [alien-professor-v12-3, alien-dados]
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Testes (mocks)
+        run: |
+          d=$(dirname "$(git ls-files | grep -m1 'teste/check_mocks.py')")
+          cd "$d" && python check_mocks.py
+      - name: Procura chave vazada
+        run: |
+          if git grep -nIE 'AIza[0-9A-Za-z_-]{30,}|[0-9]{8,10}:AA[0-9A-Za-z_-]{30,}|xai-[0-9A-Za-z]{40,}|sk-[0-9A-Za-z]{32,}' -- . ':!*.md'; then
+            echo "Chave encontrada no repositorio. Revogue e apague."; exit 1
+          fi
+          if git ls-files | grep -E '\.ex5$|_VITOR\.set$|ALIEN_config\.txt$'; then
+            echo "Arquivo proibido no git (.ex5 / preset pessoal / config)."; exit 1
+          fi
+          echo "Sem chaves. OK"
