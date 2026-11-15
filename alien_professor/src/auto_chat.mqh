@@ -94,8 +94,8 @@ string MercadoTxt(string sym="")
 // v12.4: regra de horário/mercado que vai em todo prompt de mercado
 string RegraHoraMercado()
 {
-   return " Todo horário que você citar é de Brasília (use hora_brasilia); nunca fale em 'horário do servidor'. "
-          "Se o campo mercado disser FECHADO, avise logo no começo que o mercado está fechado desde aquela hora e que os números são do último fechamento; nunca diga que está vendo ao vivo, no feed ou em tempo real.";
+   return " Todo horário que você citar é de Brasília (use o bloco AGORA e hora_brasilia); nunca fale em 'horário do servidor'. "
+          "Se o bloco AGORA ou o campo mercado disser FECHADO, avise logo no começo que o mercado está fechado desde aquela hora e que os números são do último fechamento; nunca diga que está vendo ao vivo, no feed ou em tempo real.";
 }
 string TfSnap(string sym,ENUM_TIMEFRAMES tf)
 {
@@ -228,9 +228,9 @@ string ContextJSON()
    j=StringSubstr(j,0,StringLen(j)-1);
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID), ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
    if(bid<=0 || ask<=0) return "";
-   string st; SessaoNota(TimeTradeServer(),st);
+   string st; SessaoNota(TimeTradeServer(),st); if(MercadoFechado()) st="mercado fechado";
    j+=StringFormat(",\"bid\":%s,\"ask\":%s,\"preco\":%s,\"spread\":%s",Fmt(bid),Fmt(ask),Fmt(bid),Fmt(ask-bid));
-   j+=",\"hora_brasilia\":\""+HoraUTC3()+"\",\"hora_utc3\":\""+HoraUTC3()+"\",\"mercado\":\""+JEsc(MercadoTxt())+"\"";
+   j+=",\"hora_brasilia\":\""+DiaHoraBR(AgoraBR(),true)+"\",\"mercado\":\""+JEsc(MercadoTxt())+"\"";
    j+=StringFormat(",\"sessao\":\"%s\",\"vies_dia\":\"%s\",\"tendencia_txt\":\"%s\"",JEsc(st),JEsc(g_biasTxt),JEsc(g_trendTxt));
    j+=",\"tendencias_detalhe\":{";
    for(int i=0;i<6;i++) j+=(i?",":"")+"\""+g_mtfNm[i]+"\":"+TfSnap(_Symbol,g_mtfTF[i]);
@@ -243,7 +243,7 @@ string ContextJSON()
    j+=",\"alvos_locais\":"+AlvosLocaisJSON();
    j+=",\"fvg_"+StringSubstr(EnumToString(InpTFExec),7)+"\":"+FVGJson(g_fvg,4)+",\"fvg_M15\":"+FVGJson(g_fvgM15,3)+",\"fvg_H1\":"+FVGJson(g_fvgH1,3);
    j+=",\"volume\":"+VolJSON();
-   j+=",\"noticias\":"+NewsJSON()+",\"noticias_2h\":"+News2hJSON()+",\"bloqueio_noticia\":\""+JEsc(NoticiaAviso(TimeTradeServer()))+"\"";
+   j+=",\"noticias_2h\":"+News2hJSON()+",\"bloqueio_noticia\":\""+JEsc(NoticiaAviso(TimeTradeServer()))+"\"";
    j+=",\"posicoes_abertas\":"+PosJSON();
    j+=",\"conversa_recente\":"+MemJSON()+",\"fatos_do_vitor\":"+(g_tgEmGrupo?"[]":FatosJSON());
    j+=",\"historico_veredictos\":"+VereditoStatsJSON();
@@ -364,27 +364,27 @@ string SoRespostaCurta(string t,string pergunta="")
 }
 string SysChatLivre()
 {
-   return "Você é o ALIEN, um colega de trading no WhatsApp. Português do Brasil, informal, frases curtas, gíria leve sem forçar. "
+   return "Você é o Alier, um colega de trading no Telegram. Português do Brasil, informal, frases curtas, gíria leve sem forçar. "
           "Responda SOMENTE o que foi perguntado, em 1 a 4 frases. Poucos emoji, só se couber. Sem markdown. "
           "Não monte plano, não liste compra e venda, não cite entrada/stop/alvo se não pediram, não feche com VEREDITO, não use cabeçalho. "
           "Nunca escreva nomes crus de campo (plano_compra, plano_venda, alvos_locais). Se um dia citar um setup, fale assim: 'Se for comprar: entra em X, stop Y, alvo Z (vale 2.2x o risco)'. "
-          "Use SÓ os números do CONTEXTO; nunca invente preço, stop, alvo ou horário. Horários sempre em Brasília (use hora_utc3 e hora_brasilia das notícias). "
+          "Use SÓ os números do CONTEXTO; nunca invente preço, stop, alvo ou horário. Horários sempre em Brasília (bloco AGORA e hora_brasilia das notícias). "
           "A conversa recente já está no contexto: não repita o que você já disse. Se o Vitor reclamar de repetição, não peça desculpa e cole o mesmo bloco — mude o comportamento e responda só o que falta, de outro jeito, bem curto. "
           "Varie a abertura. Não comece com 'Fala mano' nem com 'ALIEN PROFESSOR:'. "
           "Nunca mencione o teste 2016-2025 nem diga que os sinais não tiveram edge neste tipo de resposta. "
-          "Nunca prometa lucro."+RegraHoraMercado();
+          "Nunca prometa lucro."+RegraHoraMercado()+RegraContextoIA(true);
 }
 string SysChatAnalise()
 {
-   return "Você é o ALIEN, um colega de trading brasileiro (SMC/liquidez). Fale informal, frases curtas, gíria leve (mano, bora, segura a mão, preço tá esticado) sem forçar. Português do Brasil. "
-          "Use SÓ os números do CONTEXTO; nunca invente preço, stop, alvo ou horário. Horários sempre em Brasília (hora_utc3 / hora_brasilia). Sem markdown. No máximo 900 caracteres. "
+   return "Você é o Alier, um colega de trading brasileiro (SMC/liquidez). Fale informal, frases curtas, gíria leve (mano, bora, segura a mão, preço tá esticado) sem forçar. Português do Brasil. "
+          "Use SÓ os números do CONTEXTO; nunca invente preço, stop, alvo ou horário. Horários sempre em Brasília (bloco AGORA / hora_brasilia). Sem markdown. No máximo 900 caracteres. "
           "Não use rótulos robóticos nem nomes crus de campo (plano_compra, plano_venda, alvos_locais). "
           "Fale natural, tipo: 'Macro tá vendido (D1/H4/H1 pra baixo), M1 tentando subir.' "
           "Em seguida, em poucas linhas: se tem setup de compra, escreva 'Se for comprar: entra em X, stop Y, alvo Z (vale 2.2x o risco)'; se tem de venda, o mesmo; o que fazer agora; um risco (notícia, horário, spread). "
           "Alvo só vale com no mínimo 1,5R e do lado certo (compra: stop < entrada < alvo; venda: alvo < entrada < stop). Use os planos e alvos do contexto (campos internos, não imprima os nomes). Se não tiver alvo válido, diga que não tem setup naquele lado. "
           "Feche com uma linha VEREDITO: COMPRA ou VENDA ou ESPERAR (pode usar 🟢 🔴 🟡 junto, mas as palavras COMPRA/VENDA/ESPERAR têm que aparecer). Pode usar emoji úteis: 🟢 compra, 🔴 venda, 🟡 esperar, 💧 liquidez, ⚡ volume forte, 🎯 alvo, 🛑 stop, 📰 notícia. "
           "Varie a abertura. Não comece sempre com 'Fala mano'. Não repita a conversa recente. "
-          "Nunca prometa lucro. Se faltar dado, ESPERAR. Não mencione o teste 2016-2025; isso é acrescentado à parte."+RegraHoraMercado();
+          "Nunca prometa lucro. Se faltar dado, ESPERAR. Não mencione o teste 2016-2025; isso é acrescentado à parte."+RegraHoraMercado()+RegraContextoIA(false);
 }
 string SysChat(){ return SysChatAnalise(); }
 // ---- memória da conversa (últimas 10 mensagens) em MQL5\Files\ALIEN_chat_memoria.txt ----
@@ -410,7 +410,7 @@ void MemAdd(string quem,string txt)
 }
 // no grupo: sem os fatos pessoais do Vitor, e avisa quem está falando
 string QuemMsg(){ return g_tgEmGrupo?"MENSAGEM DE "+g_tgQuem+" (no grupo do Telegram do Vitor)":"MENSAGEM DO VITOR"; }
-string GrupoNota(){ return g_tgEmGrupo?" Você está no grupo do Telegram do Vitor; quem escreveu agora foi "+g_tgQuem+". Responda pra essa pessoa, curto.":""; }
+string GrupoNota(){ return g_tgEmGrupo?" Você está no grupo do Telegram do Vitor; quem escreveu agora foi "+g_tgQuem+". Responda pra essa pessoa, curto. No grupo: não faça pergunta pessoal (trabalho, barbearia, família, vida) e não puxe assunto fora do tema; fique no que a pessoa perguntou, a não ser que ela mesma mude de assunto.":""; }
 string MemTxt(){ MemLoad(); string fz=g_tgEmGrupo?"":FatosTxt(); if(ArraySize(g_mem)==0) return fz; string s=fz+"CONVERSA RECENTE (mais antiga primeiro):\n"; for(int i=0;i<ArraySize(g_mem);i++) s+=g_mem[i]+"\n"; return s+"\n"; }
 
 // ---- /analise em qualquer símbolo e tempo gráfico ----
@@ -498,13 +498,13 @@ string TFContextJSON(string sym,ENUM_TIMEFRAMES tf)
 {
    SymbolSelect(sym,true);
    double bid=SymbolInfoDouble(sym,SYMBOL_BID), ask=SymbolInfoDouble(sym,SYMBOL_ASK);
-   string j="{\"simbolo\":\""+sym+"\",\"tf_foco\":\""+TfNome(tf)+"\",\"hora_brasilia\":\""+HoraUTC3()+"\",\"mercado\":\""+JEsc(MercadoTxt(sym))+"\",\"preco\":"+FmtS(sym,bid)+",\"spread\":"+FmtS(sym,ask-bid)+",\"tendencias\":{";
+   string j="{\"simbolo\":\""+sym+"\",\"tf_foco\":\""+TfNome(tf)+"\",\"hora_brasilia\":\""+DiaHoraBR(AgoraBR(),true)+"\",\"mercado\":\""+JEsc(MercadoTxt(sym))+"\",\"preco\":"+FmtS(sym,bid)+",\"spread\":"+FmtS(sym,ask-bid)+",\"tendencias\":{";
    for(int i=0;i<6;i++) j+=(i?",":"")+"\""+g_mtfNm[i]+"\":"+IntegerToString(TrendTFs(sym,g_mtfTF[i]));
    double h2,l2; FVGz f2[];
    j+="},\"foco\":"+TfResumo(sym,tf,g_fHi,g_fLo,g_fFvg)+",\"tf_maior\":"+TfResumo(sym,TfMaior(tf),h2,l2,f2);
    double pdh=iHigh(sym,PERIOD_D1,1), pdl=iLow(sym,PERIOD_D1,1), pwh=iHigh(sym,PERIOD_W1,1), pwl=iLow(sym,PERIOD_W1,1);
    j+=",\"PDH\":"+FmtS(sym,pdh)+",\"PDL\":"+FmtS(sym,pdl)+",\"semana_passada_max\":"+FmtS(sym,pwh)+",\"semana_passada_min\":"+FmtS(sym,pwl);
-   j+=",\"noticias\":"+NewsJSON()+",\"bloqueio_noticia\":\""+JEsc(NoticiaAviso(TimeTradeServer()))+"\",\"posicoes_abertas\":"+PosJSON();
+   j+=",\"bloqueio_noticia\":\""+JEsc(NoticiaAviso(TimeTradeServer()))+"\",\"posicoes_abertas\":"+PosJSON();
    j+=StringFormat(",\"hoje\":{\"trades\":%d,\"stops\":%d,\"resultado_usd\":%.2f,\"pare\":\"%s\"}",g_tradesHoje,g_stopsHoje,g_netHoje,JEsc(g_pare));
    if(sym==_Symbol) j+=",\"professor_do_grafico\":"+ContextJSON();
    return j+"}";
@@ -537,7 +537,7 @@ bool FotoTF(string sym,ENUM_TIMEFRAMES tf,string caption)
 bool EhMercado(string t)
 {
    string u=t; StringToLower(u);
-   string k[]={"compr","vend","entr","oper","trade","mercado","ouro","gold","xau","nasdaq","us500","dax","índice","indice","liquidez","fvg","bos","stop","alvo","tendên","tendenc","sinal","long","short","sell","buy","gráfico","grafico","preço","preco","notícia","noticia","analis","análise","agora","topo","fundo","varr"};
+   string k[]={"compr","vend","entr","oper","trade","mercado","ouro","gold","xau","nasdaq","us500","dax","índice","indice","liquidez","fvg","bos","stop","alvo","tendên","tendenc","sinal","long","short","sell","buy","gráfico","grafico","preço","preco","notícia","noticia","analis","análise","agora","topo","fundo","varr","abertura","reabr","fechament","gap","agenda","calend","payroll","fomc","juros","dolar","dólar","dxy","killzone","sessão","sessao","spread","vwap","posição","posicao","saldo"};
    for(int i=0;i<ArraySize(k);i++) if(StringFind(u,k[i])>=0) return true;
    return false;
 }
@@ -610,9 +610,10 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
    string sys=(plano?SysChatAnalise():SysChatLivre())+GrupoNota();
    if(EhReclamaRepete(pergunta)) sys+=" O Vitor reclamou que você está repetindo. NÃO peça desculpa e cole o mesmo texto. Responda só o que falta, de outro jeito, bem curto.";
-   int tok=plano?600:350;
+   bool abert=EhPerguntaAbertura(pergunta) || MercadoFechado();
+   int tok=plano?600:(EhPerguntaAbertura(pergunta)?480:350);
    double temp=plano?0.2:0.6;
-   string r=AIAskEx(sys,MemTxt()+"CONTEXTO DO MERCADO:\n"+ctx+"\n\n"+QuemMsg()+":\n"+pergunta,tok,false,plano,temp);
+   string r=AIAskEx(sys,MemTxt()+CtxIA(pergunta,true,abert)+"CONTEXTO DO MERCADO (JSON):\n"+ctx+"\n\n"+QuemMsg()+":\n"+pergunta,tok,false,plano,temp);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=SemCamposCrus(r);
    if(plano) r=EdgeSePreciso(r);
@@ -678,7 +679,8 @@ string StatusTxt()
 string NoticiasTxt()
 {
    LoadNews(true);
-   return "📰 Notícias na frente ("+InpCalMoedas+", horário de Brasília; 🔴 forte, 🟡 média):\n"+NewsListaBR(10,"\n")+
+   string sem=""; if(CalOn()){ AgendaCarrega(); if(g_agIA!="") sem="\n\n🗓️ Próximos 7 dias (as mais importantes):\n"+g_agIA; StringTrimRight(sem); }
+   return "📰 Notícias na frente ("+InpCalMoedas+", horário de Brasília; 🔴 forte, 🟡 média):\n"+NewsListaBR(10,"\n")+sem+
           (InpCalBloquearForte?StringFormat("\n\nEm notícia forte eu não entro %d min antes e depois.",InpNoticiaMin):"");
 }
 string AjudaTxt()
@@ -954,7 +956,7 @@ void TgResumos()
       Plano b=MelhorPlano();
       string r="";
       string ctx=ContextJSON();
-      if(AIOn() && ContextValido(ctx)) r=AIAskEx(SysChatAnalise(),"CONTEXTO:\n"+ctx+"\n\nMENSAGEM: resumo informal da abertura de "+nomes[i]+", fecha com VEREDITO.",600,true,true,0.2);
+      if(AIOn() && ContextValido(ctx)) r=AIAskEx(SysChatAnalise(),CtxIA("",true,false)+"CONTEXTO:\n"+ctx+"\n\nMENSAGEM: resumo informal da abertura de "+nomes[i]+", fecha com VEREDITO.",600,true,true,0.2);
       if(r=="") r=Narrativa(b,g_pare!="",NoticiaAviso(now))+"\nNotícias (Brasília): "+NewsListaBR(4," | ");
       else { r=SemAvisoEdge(SemCamposCrus(r)); AIPanelSet(r); ObsSet(r,"🕗"); VereditoLog("resumo"); }
       SendMsg("Abertura de "+nomes[i]+" no "+_Symbol+"\n"+r);

@@ -178,7 +178,7 @@ void TentaOperar()
       g_status = g_tradePausa?"PAUSADO por /pausa (não opera)":("MODO ASSISTENTE: só analisa e avisa"+(blk!=""?" | "+blk:""));
       if(!cruzou) return;
       Diario(b,"sinal (modo assistente, não operou)"+(blk!=""?" - "+blk:""));
-      string ia2=AIAsk(StateJSON(b)); if(ia2!=""){ AIPanelSet(ia2); ObsSet(ia2,"🤖"); VereditoLog("sinal"); }
+      string ia2=AIAsk(AgoraCurtoIA()+StateJSON(b)); if(ia2!=""){ AIPanelSet(ia2); ObsSet(ia2,"🤖"); VereditoLog("sinal"); }
       Notifica(StringFormat("Achei um sinal de %s no %s, nota %d/10 — mas tô no modo assistente, não operei.\nEntrada %s, stop %s, alvo %s, lote %.2f (risco ~$%.2f).\n%s%s",
                b.dir==1?"🟢 COMPRA":"🔴 VENDA",_Symbol,b.score,Fmt(b.entry),Fmt(b.stop),b.target>0?Fmt(b.target):"-",b.lot,b.riskUSD,
                blk!=""?"Aviso: "+blk+"\n":"",Narrativa(b,false,""))+(ia2!=""?"\n\nO que a IA achou:\n"+ia2:""));
@@ -203,7 +203,7 @@ void TentaOperar()
    double lot=NormalizeDouble(b.lot,2);
    string cm=StringFormat("APROF %d/10",b.score);
    // IA: comenta o sinal; só pode VETAR se InpAIVeto = true (nunca abre trade)
-   string ia=AIAsk(StateJSON(b)); if(ia!=""){ AIPanelSet(ia); ObsSet(ia,"🤖"); VereditoLog("sinal"); }
+   string ia=AIAsk(AgoraCurtoIA()+StateJSON(b)); if(ia!=""){ AIPanelSet(ia); ObsSet(ia,"🤖"); VereditoLog("sinal"); }
    if(AIVetou(ia,b.dir)){ Diario(b,"pulado: IA vetou"); Notifica(StringFormat("A IA vetou o sinal do %s nota %d/10. Não entrei. %s",_Symbol,b.score,ia)); return; }
    bool ok=false; bool limite=(StringFind(b.entNome,"FVG")>=0 || StringFind(b.entNome,"vazio")>=0);
    if(limite)
@@ -275,7 +275,7 @@ void OnTick()
       TentaOperar();
       g_statusSvc=SvcStatus();
       if(AIOn() && InpAIMinutos>0 && TimeCurrent()-g_aiLast>=InpAIMinutos*60)
-      { Plano pb=MelhorPlano(); string t=AIAsk(StateJSON(pb)); if(t!=""){ AIPanelSet(t); ObsSet(t,"🤖"); VereditoLog("periodo"); } }
+      { Plano pb=MelhorPlano(); string t=AIAsk(AgoraCurtoIA()+StateJSON(pb)); if(t!=""){ AIPanelSet(t); ObsSet(t,"🤖"); VereditoLog("periodo"); } }
       if(ContaBloqueada()){ g_extra="BLOQUEADO: CONTA REAL - este robô só opera em DEMO"; g_extraC=clrRed; }
       else { g_extra="ROBÔ: "+g_status; g_extraC= StringFind(g_status,"aguardando")==0||StringFind(g_status,"em operação")==0 ? clrLime : (StringFind(g_status,"MODO ASSISTENTE")==0 ? clrGold : clrOrangeRed); }
    }

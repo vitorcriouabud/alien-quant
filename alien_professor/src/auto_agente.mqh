@@ -307,6 +307,7 @@ void FotoHandle(string chat,string fileId,string legenda)
       if(ContextValido(ctx)) pedido+="\nPara comparar, a leitura do "+_Symbol+" no MT5 agora (números confiáveis do robô): "+StringSubstr(ctx,0,3500);
    }
    string m=g_tgEmGrupo?"":FatosTxt(); if(m!="") pedido+="\n"+m;
+   pedido+="\n"+CtxIA(legenda,EhPerguntaAgenda(legenda),false)+RegraContextoIA(false);
    pedido+=GrupoNota();
    string t=GeminiMidia(img,"image/jpeg",pedido,700,0.4,erro);
    if(t==""){ SendMsg(erro=="limite grátis do Google"?"A IA grátis do Google tá no limite agora 😅 Me manda a foto de novo em 1 minutinho.":"Não consegui analisar a foto agora ("+erro+"). Tenta de novo daqui a pouco."); return; }
@@ -318,17 +319,19 @@ void FotoHandle(string chat,string fileId,string legenda)
 // conversa sobre qualquer assunto (não é mercado)
 string SysGeral()
 {
-   return "Você é o Alier, assistente pessoal do Vitor no Telegram (ele é barbeiro e estuda trading). Ajuda em qualquer assunto: dúvidas, contas, textos, ideias, saúde do dia a dia, estudo. "
+   string quem=g_tgEmGrupo?"Você é o Alier, assistente de trading do Vitor, agora no grupo do Telegram dele. Ajuda em qualquer assunto que perguntarem. "
+                           :"Você é o Alier, assistente pessoal do Vitor no Telegram (ele é barbeiro e estuda trading). Ajuda em qualquer assunto: dúvidas, contas, textos, ideias, saúde do dia a dia, estudo. ";
+   return quem+
           "Português do Brasil, informal e acolhedor, curto (1 a 5 frases, a não ser que ele peça mais). Sem markdown. "
-          "Se não souber ou for algo que muda rápido (notícia de hoje, preço, placar), diga que não tem acesso à internet em tempo real. "
+          "Você não tem internet: placar, notícia geral, clima ou coisa fora do MT5, diga que não tem acesso. Mas a agenda econômica e o preço do ouro você TEM pelo MT5 (blocos AGORA/AGENDA). "
           "Horários sempre de Brasília. Se AGORA disser mercado FECHADO, nunca diga que está vendo o mercado ao vivo. "
           "Se ele parecer muito mal ou falar em se machucar, acolha e lembre do CVV: ligue 188 (grátis, 24h). "
-          "Use o que você sabe dele e a conversa recente, sem repetir o que já disse. Nunca prometa lucro.";
+          "Use o que você sabe dele e a conversa recente, sem repetir o que já disse. Nunca prometa lucro."+RegraContextoIA(true);
 }
 void ChatGeral(string pergunta)
 {
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
-   string agora="AGORA: "+TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES)+" (Brasília); "+MercadoTxt()+".\n";
+   string agora=CtxIA(pergunta,EhPerguntaAgenda(pergunta),EhPerguntaAbertura(pergunta));
    string r=AIAskEx(SysGeral()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=AISemVeredito(SemCamposCrus(r));
