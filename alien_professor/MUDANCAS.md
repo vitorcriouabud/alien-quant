@@ -16,6 +16,7 @@
 - Com as duas Gemini: na conversa fica a resposta mais curta; na análise, "as duas leituras bateram" ou "discordaram, então eu esperaria". Se o Google estiver no limite grátis, tenta de novo e avisa com calma.
 
 **Instalação e dados**
+- ATUALIZAR.bat: baixa a versão mais nova do GitHub, instala e compila sozinho. Dois cliques, com o MT5 fechado.
 - INSTALAR.bat instala só no MT5 da RoboForex, em Experts\ALIEN, apaga cópias velhas e libera o WebRequest sozinho.
 - Suas chaves, token e chat ficam em MQL5\Files\ALIEN_config.txt (fora do robô). Atualizar não apaga. /start conecta o chat sozinho.
 - Kit pessoal: SUBIR_GITHUB.bat manda código e diários para a branch alien-dados.

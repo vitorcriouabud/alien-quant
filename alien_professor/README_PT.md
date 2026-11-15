@@ -186,7 +186,7 @@ Como ler: as 2 semanas positivas são só **13 trades** (sorte ou azar cabem aí
 
 ### Configuração pessoal (novo na 12.3)
 Token do Telegram, chat id e chaves ficam no arquivo **`MQL5\Files\ALIEN_config.txt`** (não dentro do robô), uma por linha:
-`telegram_token=...`, `telegram_chat_id=...`, `gemini_chave_1=...`, `gemini_chave_2=...`, `modo=assistente` (opcional). Se o arquivo não existir, valem os parâmetros. Se o chat id estiver vazio, mande **/start** pro bot: ele grava sozinho. Atualizar (rodar o INSTALAR.bat do zip novo) **nunca apaga** esse arquivo. Veja `COMO_ATUALIZAR.md` e `MUDANCAS.md`.
+`telegram_token=...`, `telegram_chat_id=...`, `gemini_chave_1=...`, `gemini_chave_2=...`, `modo=assistente` (opcional). Se o arquivo não existir, valem os parâmetros. Se o chat id estiver vazio, mande **/start** pro bot: ele grava sozinho. Atualizar (dois cliques no **ATUALIZAR.bat**, que baixa do GitHub, ou o INSTALAR.bat de um zip novo) **nunca apaga** esse arquivo. Veja `COMO_ATUALIZAR.md` e `MUDANCAS.md`.
 
 ### Agente Alier (novo na 12.3)
 - **Botões fixos** embaixo do chat: 📰 Notícias, 📊 Análise, 🧭 Plano, 📸 Foto, ℹ️ Status, ⏸️ Pausa, ▶️ Retoma.
