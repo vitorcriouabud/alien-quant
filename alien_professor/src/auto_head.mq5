@@ -6,10 +6,10 @@
 //| Stop e alvo vão junto com a ordem. Conta real bloqueada padrão.  |
 //+------------------------------------------------------------------+
 #property copyright "ALIEN - Vitor Lima"
-#property version   "12.40"
+#property version   "12.50"
 #property description "Robô dos sinais do ALIEN PROFESSOR. Risco fixo, 1 posição, travas diárias, DD 15%, bloqueio de conta real. ATENÇÃO: o teste histórico dos sinais foi NEGATIVO."
 #define APROF_EA
-#define APROF_VER "12.4"
+#define APROF_VER "12.5"
 #include <Trade\Trade.mqh>
 
 input group "=== ROBÔ (AUTO) ==="
