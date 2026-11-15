@@ -1,0 +1,17 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.22, pytest-9.2.0, pluggy-1.7.0 -- /usr/local/bin/python3
+cachedir: .pytest_cache
+rootdir: /workspace/alien_lab_v1
+collecting ... collected 8 items
+
+tests/test_motor.py::test_sweep_is_causal_and_directional PASSED         [ 12%]
+tests/test_motor.py::test_future_mutation_does_not_change_past_signals PASSED [ 25%]
+tests/test_motor.py::test_doji_has_no_close_quality_signal PASSED        [ 37%]
+tests/test_motor.py::test_h14_h16_direction_and_identity PASSED          [ 50%]
+tests/test_motor.py::test_units_points_versus_price PASSED               [ 62%]
+tests/test_motor.py::test_gap_and_spread_zero_and_pnl PASSED             [ 75%]
+tests/test_motor.py::test_repeatable_hash_and_signals PASSED             [ 87%]
+tests/test_motor.py::test_prev_window_excludes_current_and_future PASSED [100%]
+
+============================== 8 passed in 0.64s ===============================
+EXIT:0
