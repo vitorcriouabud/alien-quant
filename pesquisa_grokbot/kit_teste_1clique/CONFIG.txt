@@ -1,0 +1,43 @@
+; =========================================================
+;  CONFIGURAÇÃO DO TESTE - quase não precisa mudar nada
+;  Linhas que começam com ; são só explicação.
+; =========================================================
+
+; Caminho do MetaTrader 5. Deixe em branco para o kit
+; achar sozinho (ele procura a pasta da RoboForex).
+; Se não achar, cole aqui o caminho da PASTA do MT5:
+; MT5_CAMINHO=C:\Program Files\RoboForex MT5 Terminal
+MT5_CAMINHO=
+
+; Nome do robô, como aparece no Navegador do MetaTrader.
+Experto=ALIEN_V11_SCALPER
+
+; Arquivo de configuração do robô (.set).
+; O arquivo já veio nesta pasta do kit.
+; Se você quiser usar outro, coloque o .set aqui
+; e escreva o nome abaixo.
+ArquivoSet=ALIEN_V11_SCALPER.set
+
+; Ativo e tempo gráfico
+Ativo=XAUUSD
+TempoGrafico=M1
+
+; Período do teste, no formato AAAA.MM.DD
+DataInicio=2026.08.01
+DataFim=2026.11.13
+
+; Conta SIMULADA do testador (não é a sua conta real).
+Deposito=10000
+Moeda=USD
+Alavancagem=1:100
+
+; Modelo de ticks:
+;   4 = cada tick baseado em ticks REAIS  <-- deixe assim
+;   0 = cada tick (simulado, NÃO use)
+;   1 = apenas OHLC de 1 minuto (NÃO use)
+; Não mude para outro valor, a não ser que eu peça.
+Modelo=4
+
+; Não coloque login, senha ou número de conta neste arquivo.
+; Este kit só roda o testador. Ele não entra na sua conta
+; real e não mexe na conta da mesa.
