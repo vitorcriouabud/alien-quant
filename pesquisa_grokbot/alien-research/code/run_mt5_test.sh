@@ -11,7 +11,7 @@
 # <deposit>: number, e.g. 10000
 #
 # Optional env:
-#   MT5_LOGIN=  # defina no ambiente; nunca commitar login/senha
+#   MT5_LOGIN=67316641
 #   MT5_SERVER=RoboForex-ECN
 #   MT5_LEVERAGE=100
 #   MT5_CURRENCY=USD
@@ -49,14 +49,10 @@ export DISPLAY="${DISPLAY:-:2}"
 
 MT5_ROOT="$WINEPREFIX/drive_c/Program"
 MT5_BIN="$HOME/.local/bin/mt5"
-LOGIN="${MT5_LOGIN:-}"
+LOGIN="${MT5_LOGIN:-67316641}"
 SERVER="${MT5_SERVER:-RoboForex-ECN}"
 LEVERAGE="${MT5_LEVERAGE:-100}"
 CURRENCY="${MT5_CURRENCY:-USD}"
-if [[ -z "$LOGIN" ]]; then
-  echo "MT5_LOGIN is required (demo login). Do not hardcode it in this file." >&2
-  exit 2
-fi
 MODEL="${MT5_MODEL:-4}"
 REPORT_DIR="${MT5_REPORT_DIR:-/workspace/alien-research/out/mt5}"
 RELAUNCH="${MT5_RELAUNCH:-1}"
@@ -75,6 +71,7 @@ if [[ ! -f $MT5_ROOT/terminal64.exe ]]; then
   exit 1
 fi
 
+# NOTE (15/11): every wine call uses 9>&- so wineserver/GUI never inherit the lock fd (that deadlocked the lock).
 # --- serialize tester runs between agents sharing this box (added 15/11) ---
 exec 9>/tmp/mt5_tester.lock
 flock -w 7200 9 || { echo "could not get /tmp/mt5_tester.lock" >&2; exit 1; }
@@ -99,7 +96,7 @@ elif [[ -f "$EA_ARG" ]]; then
   if [[ "$ext" == "mq5" ]]; then
     log "compiling C:\\Program\\MQL5\\Experts\\ALIEN\\$base"
     set +e
-    "$MT5_BIN" compile "C:\\Program\\MQL5\\Experts\\ALIEN\\$base"
+    "$MT5_BIN" compile "C:\\Program\\MQL5\\Experts\\ALIEN\\$base" 9>&-
     cc=$?
     set -e
     log "compiler exit $cc (MetaEditor often exits 1 even on success)"
@@ -207,7 +204,7 @@ graceful_close_terminal() {
     exit 1
   fi
   log "closing terminal64 pids: $pids"
-  wine taskkill /IM terminal64.exe >/tmp/mt5_taskkill.log 2>&1 || true
+  wine taskkill /IM terminal64.exe >/tmp/mt5_taskkill.log 2>&1 9>&- || true
   for i in $(seq 1 20); do
     pids="$(term_pids)"
     [[ -z "$pids" ]] && break
@@ -243,7 +240,7 @@ relaunch_gui() {
   fi
   log "relaunching GUI terminal on DISPLAY=$DISPLAY (saved account, no password on CLI)"
   nohup "$MT5_BIN" terminal /login:"$LOGIN" /server:"$SERVER" \
-    >/tmp/mt5_gui_relaunch.log 2>&1 &
+    >/tmp/mt5_gui_relaunch.log 2>&1 9>&- &
   disown || true
   sleep 2
   log "terminal pids: $(term_pids || echo none)"
@@ -253,7 +250,7 @@ graceful_close_terminal
 
 log "starting tester: $SYMBOL $TF Model=$MODEL $FROM..$TO deposit=$DEPOSIT"
 set +e
-"$MT5_BIN" test "$ini_win"
+"$MT5_BIN" test "$ini_win" 9>&-
 tc=$?
 set -e
 log "tester exit $tc"
