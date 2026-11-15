@@ -1,6 +1,7 @@
 # ALIEN PROFESSOR - instala no MT5 da RoboForex (so UM terminal).
 # Copia indicador, robos e presets para MQL5\...\ALIEN, apaga copias velhas soltas
 # e libera o WebRequest (Telegram e Gemini). Nao mexe em conta nem senha.
+param([switch]$Compilar)
 $ErrorActionPreference = "Continue"
 $aqui = Split-Path -Parent $MyInvocation.MyCommand.Path
 # ---- escolhe UM terminal: RoboForex (origin.txt); se nao achar, o unico; se tiver varios, pergunta ----
@@ -71,6 +72,28 @@ if (Test-Path $cfgSrc) {
 }
 Write-Host ("OK -> " + $nome) -ForegroundColor Green
 Write-Host ("     " + $exp)
+
+# ---- ATUALIZAR: compila os .mq5 baixados com o MetaEditor do proprio MT5 ----
+if ($Compilar) {
+  $inst = $nome
+  $me = Join-Path $inst "metaeditor64.exe"
+  if (-not (Test-Path $me)) { $me = Join-Path $inst "MetaEditor64.exe" }
+  if (-not (Test-Path $me)) {
+    Write-Host "Nao achei o MetaEditor. Abra o MT5, va no Navegador, botao direito no robo ALIEN_PROFESSOR_AUTO > Modificar e aperte F7." -ForegroundColor Yellow
+  } else {
+    $alvos = @((Join-Path $exp "ALIEN_PROFESSOR_AUTO.mq5"), (Join-Path $exp "ALIEN_PROFESSOR_TELEGRAM.mq5"), (Join-Path $ind "ALIEN_PROFESSOR.mq5"))
+    foreach ($a in $alvos) {
+      if (-not (Test-Path $a)) { continue }
+      $log = [System.IO.Path]::ChangeExtension($a, ".log")
+      Remove-Item $log -Force -ErrorAction SilentlyContinue
+      Start-Process -FilePath $me -ArgumentList ('/compile:"' + $a + '"'), '/log' -Wait -WindowStyle Hidden
+      $res = ""
+      if (Test-Path $log) { $res = (Get-Content $log -ErrorAction SilentlyContinue | Where-Object { $_ -match "Result:" } | Select-Object -Last 1) }
+      if ($res -match "Result: 0 error") { Write-Host ("Compilado: " + (Split-Path $a -Leaf)) -ForegroundColor Green }
+      else { Write-Host ("Nao consegui compilar " + (Split-Path $a -Leaf) + " " + $res) -ForegroundColor Red }
+    }
+  }
+}
 
 # ---- WebRequest: libera Telegram e Gemini no config\common.ini (MT5 fechado) ----
 $urls = @("https://api.telegram.org", "https://generativelanguage.googleapis.com")
