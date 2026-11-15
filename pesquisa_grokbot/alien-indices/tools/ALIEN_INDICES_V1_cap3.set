@@ -1,0 +1,45 @@
+; ALIEN INDICES V1 - parametros padrao (iguais a pesquisa)
+; Indice 1 (S&P 500). RoboForex-ECN: .US500Cash
+InpSimbolo1=.US500Cash
+; Indice 2 (Nasdaq 100). RoboForex-ECN: .USTECHCash
+InpSimbolo2=.USTECHCash
+; Indice 3 (DAX 40). RoboForex-ECN: .DE40Cash. Deixe vazio para nao usar
+InpSimbolo3=.DE40Cash
+; Usar a estrategia RSI2 (compra e venda)
+InpUsarRSI2=true
+; Usar a estrategia IBS (so compra)
+InpUsarIBS=true
+; Risco por trade em % da conta (pesquisa: 1%)
+InpRiscoPorTrade=1.0
+; Teto duro: nunca arriscar mais que isto por trade (%)
+InpRiscoTeto=2.0
+; Soma maxima do risco aberto em %. 6.5 = na pratica igual a pesquisa (6 fluxos x 1% + folga de arredondamento); 3 = mais conservador
+InpRiscoAbertoMax=3.0
+; Se a conta cair isto (%) no dia, nao abre mais nada hoje (posicoes abertas seguem suas regras)
+InpPerdaDiariaMax=3.0
+; Se a conta cair isto (%) do pico, PAUSA novas entradas (revisar antes de religar)
+InpTravaDDPico=15.0
+; Seguranca: so opera em conta DEMO (mude para false so quando decidir ir pro real)
+InpSoContaDemo=true
+; RSI2: compra se RSI(2) < isto; vende se RSI(2) > 100 - isto
+InpRSI_Limite=10.0
+; RSI2: stop = isto x ATR(20)
+InpRSI_StopATR=3.0
+; RSI2: sai depois de tantas barras D1
+InpRSI_MaxBarras=10
+; IBS: compra se IBS < isto
+InpIBS_Limite=0.25
+; IBS: stop = isto x ATR(20)
+InpIBS_StopATR=4.0
+; IBS: sai depois de tantas barras D1
+InpIBS_MaxBarras=5
+; Numero magico base (cada fluxo usa base+0..5)
+InpMagicBase=20261115
+; Desvio maximo de preco na ordem (pontos)
+InpDesvioPontos=50
+; Se o spread for maior que esta fracao do stop, espera (nao pula) ate melhorar
+InpSpreadMaxFracStop=0.10
+; Mostrar painel amarelo/preto no grafico
+InpPainel=true
+; Gravar ALIEN_INDICES_log.csv (pasta MQL5/Files) com cada decisao e trade
+InpLogCSV=true
