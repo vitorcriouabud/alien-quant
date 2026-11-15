@@ -6,6 +6,7 @@ Resumo simples do que a gente aprendeu, onde chegou e o que vem agora.
 - **Versão 12.3 — agente Alier**, na branch `alien-professor-v12-3` (nunca na `main`; o V11 da `main` não foi mexido).
 - O robô é um **assistente e uma ferramenta de disciplina**, não uma máquina de dinheiro. No kit pessoal ele vem em **modo assistente**: analisa, avisa e conversa, mas não manda ordem.
 - Telegram ao vivo com o robô: avisos sozinhos (varrida de liquidez, mudança de estrutura CHoCH/BOS, toque em bloco de ordens, VWAP, aviso 15 min antes de notícia forte e o resultado depois), conversa livre sobre qualquer assunto, foto e áudio pela Gemini, memória, botões fixos, resumo de domingo 20:00 (Brasília).
+- **Balão da IA no gráfico:** a última observação da IA aparece perto do preço, com a etiqueta "obs. da IA, não certeza".
 - Instalação e atualização em dois cliques: `INSTALAR.bat` e `ATUALIZAR.bat` (baixa do GitHub). Suas chaves ficam em `MQL5\Files\ALIEN_config.txt` e nunca são apagadas.
 
 ## O que os testes mostraram (a verdade)
