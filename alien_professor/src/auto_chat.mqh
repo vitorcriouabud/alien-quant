@@ -584,6 +584,7 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
    if(plano) VereditoLog("chat");
    FatoTalvez(pergunta); MemAdd("Vitor",pergunta); MemAdd("Alier",r);
    if((sym=="" || sym==_Symbol) && plano) AIPanelSet(r);
+   if((sym=="" || sym==_Symbol) && (plano || (mercado && !soNoticia))) ObsSet(r,plano?"🎯":"💬");
    string msg=r;
    if(titulo!="") msg=titulo+"\n"+r;
    if(plano) msg+="\n\n(opinião — quem decide é você)";
@@ -783,6 +784,7 @@ void TgPreAlerta()
       long d=(long)(g_news[i].t-now); if(d<=0 || d>InpPreAlertaMin*60) continue;
       string key="|"+IntegerToString((long)g_news[i].id)+"|"; if(StringFind(g_alertados,key)>=0) continue;
       g_alertados+=IntegerToString((long)g_news[i].id)+"|"; TgEstadoSave();
+      ObsSet(StringFormat("📰 Notícia forte de %s às %s (Brasília): %s. Cuidado com a volatilidade.",g_news[i].cur,HHMMBR(g_news[i].t),g_news[i].nome),"📰");
       SendMsg(StringFormat("📰 Atenção: notícia forte de %s daqui a %d min (às %s, Brasília): %s.%s",g_news[i].cur,(int)(d/60)+1,HHMMBR(g_news[i].t),g_news[i].nome,
               InpCalBloquearForte?StringFormat(" Eu não entro %d min antes/depois. Segura a mão nas posições.",InpNoticiaMin):""));
    }
@@ -806,7 +808,7 @@ void TgResumos()
       string ctx=ContextJSON();
       if(AIOn() && ContextValido(ctx)) r=AIAskEx(SysChatAnalise(),"CONTEXTO:\n"+ctx+"\n\nMENSAGEM: resumo informal da abertura de "+nomes[i]+", fecha com VEREDITO.",600,true,true,0.2);
       if(r=="") r=Narrativa(b,g_pare!="",NoticiaAviso(now))+"\nNotícias (Brasília): "+NewsListaBR(4," | ");
-      else { r=SemAvisoEdge(SemCamposCrus(r)); AIPanelSet(r); VereditoLog("resumo"); }
+      else { r=SemAvisoEdge(SemCamposCrus(r)); AIPanelSet(r); ObsSet(r,"🕗"); VereditoLog("resumo"); }
       SendMsg("Abertura de "+nomes[i]+" no "+_Symbol+"\n"+r);
       TgFoto(FotoLegenda());
    }

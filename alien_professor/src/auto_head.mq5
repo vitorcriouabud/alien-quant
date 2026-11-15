@@ -49,6 +49,7 @@ input int    InpAlertaCooldownMin = 20;          // Mesmo tipo de aviso: esperar
 input bool   InpDisciplina        = true;        // Perguntar "seguiu o plano?" quando um trade fecha
 input bool   InpVoz               = true;        // Entender áudio do Telegram (usa a chave Gemini)
 input int    InpPausaAposStopMin  = 0;           // Depois de um stop, segurar os avisos automáticos N min (0 = desligado; não trava ordens)
+input bool   InpBalaoIA           = true;        // Mostrar no gráfico a última observação da IA (balão perto do preço)
 input bool   InpBackupSemanal     = true;        // Copiar os ALIEN_*.csv toda semana para MQL5/Files/ALIEN_backup/data
 #define InpRiscoUSD InpRiskUSD
 
