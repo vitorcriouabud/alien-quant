@@ -1,0 +1,253 @@
+{
+  "file": "/workspace/alien-research/out/mt5/V11_commECN_20260801_20261113.htm",
+  "expert": "Settings",
+  "period": "M1 (2026.08.01 - 2026.11.13)",
+  "deposit": "10 000.00",
+  "quality_raw": "13% real ticks",
+  "real_tick_pct": 13,
+  "bars": "MinSweepPoints=3.0",
+  "ticks": "33005241",
+  "net": "491.80",
+  "pf": "3.01",
+  "trades": "1096",
+  "win_trades": "815 (74.36%)",
+  "loss_trades": "281 (25.64%)",
+  "dd_max_eq": "25.67 (0.24%)",
+  "dd_rel_eq": "0.24% (25.67)",
+  "gross_profit": "736.19",
+  "gross_loss": "-244.39",
+  "deal_count": 2192,
+  "commission_sum": -89.48,
+  "swap_sum": 0.0,
+  "profit_sum": 581.28,
+  "wins_num": 815.0,
+  "win_rate_pct": 74.36,
+  "dd_max_eq_money": 25.67,
+  "dd_max_eq_pct": 0.24,
+  "weeks": [
+    {
+      "week_start": "2026-08-03",
+      "trades": 75,
+      "wins": 60,
+      "losses": 15,
+      "net": 45.26000000000003,
+      "commission": -6.000000000000004,
+      "profit": 51.26,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-08-10",
+      "trades": 75,
+      "wins": 61,
+      "losses": 14,
+      "net": 37.910000000000046,
+      "commission": -6.000000000000004,
+      "profit": 43.910000000000004,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-08-17",
+      "trades": 75,
+      "wins": 56,
+      "losses": 19,
+      "net": 28.919999999999995,
+      "commission": -6.299999999999998,
+      "profit": 35.22,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-08-24",
+      "trades": 75,
+      "wins": 60,
+      "losses": 15,
+      "net": 46.58000000000009,
+      "commission": -7.499999999999981,
+      "profit": 54.08000000000003,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-08-31",
+      "trades": 75,
+      "wins": 62,
+      "losses": 13,
+      "net": 51.530000000000065,
+      "commission": -6.000000000000004,
+      "profit": 57.53,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-09-07",
+      "trades": 75,
+      "wins": 59,
+      "losses": 16,
+      "net": 44.27000000000005,
+      "commission": -6.000000000000004,
+      "profit": 50.27000000000002,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-09-14",
+      "trades": 75,
+      "wins": 55,
+      "losses": 20,
+      "net": 28.810000000000038,
+      "commission": -6.000000000000004,
+      "profit": 34.809999999999995,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-09-21",
+      "trades": 75,
+      "wins": 63,
+      "losses": 12,
+      "net": 55.460000000000065,
+      "commission": -6.000000000000004,
+      "profit": 61.46000000000003,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-09-28",
+      "trades": 75,
+      "wins": 62,
+      "losses": 13,
+      "net": 51.06000000000006,
+      "commission": -6.000000000000004,
+      "profit": 57.06000000000001,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-10-05",
+      "trades": 75,
+      "wins": 57,
+      "losses": 17,
+      "net": 34.37000000000003,
+      "commission": -6.000000000000004,
+      "profit": 40.37000000000001,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-10-12",
+      "trades": 75,
+      "wins": 59,
+      "losses": 16,
+      "net": 18.690000000000033,
+      "commission": -6.000000000000004,
+      "profit": 24.69,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-10-19",
+      "trades": 75,
+      "wins": 60,
+      "losses": 15,
+      "net": 35.83000000000005,
+      "commission": -6.000000000000004,
+      "profit": 41.83000000000001,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-10-26",
+      "trades": 75,
+      "wins": 52,
+      "losses": 23,
+      "net": 32.310000000000045,
+      "commission": -6.000000000000004,
+      "profit": 38.310000000000024,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-11-02",
+      "trades": 61,
+      "wins": 23,
+      "losses": 38,
+      "net": -11.789999999999988,
+      "commission": -4.8800000000000034,
+      "profit": -6.91,
+      "swap": 0.0
+    },
+    {
+      "week_start": "2026-11-09",
+      "trades": 60,
+      "wins": 25,
+      "losses": 35,
+      "net": -7.409999999999997,
+      "commission": -4.800000000000003,
+      "profit": -2.609999999999999,
+      "swap": 0.0
+    }
+  ],
+  "commission_samples": [
+    {
+      "time": "2026.08.03 11:03:02",
+      "symbol": "XAUUSD",
+      "type": "buy",
+      "entry": "in",
+      "volume": 0.01,
+      "price": 4059.56,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.0,
+      "comment": "ALIEN V11 SCALPER BUY"
+    },
+    {
+      "time": "2026.08.03 11:03:19",
+      "symbol": "XAUUSD",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.01,
+      "price": 4059.67,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.11,
+      "comment": "sl 4059.67"
+    },
+    {
+      "time": "2026.08.03 11:11:43",
+      "symbol": "XAUUSD",
+      "type": "sell",
+      "entry": "in",
+      "volume": 0.01,
+      "price": 4061.42,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.0,
+      "comment": "ALIEN V11 SCALPER SELL"
+    },
+    {
+      "time": "2026.08.03 11:12:59",
+      "symbol": "XAUUSD",
+      "type": "buy",
+      "entry": "out",
+      "volume": 0.01,
+      "price": 4060.1,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 1.32,
+      "comment": "tp 4060.10"
+    },
+    {
+      "time": "2026.08.03 11:15:19",
+      "symbol": "XAUUSD",
+      "type": "sell",
+      "entry": "in",
+      "volume": 0.01,
+      "price": 4062.2,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.0,
+      "comment": "ALIEN V11 SCALPER SELL"
+    },
+    {
+      "time": "2026.08.03 11:16:12",
+      "symbol": "XAUUSD",
+      "type": "buy",
+      "entry": "out",
+      "volume": 0.01,
+      "price": 4061.11,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 1.09,
+      "comment": "tp 4061.11"
+    }
+  ]
+}

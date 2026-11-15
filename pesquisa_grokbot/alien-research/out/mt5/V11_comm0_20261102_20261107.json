@@ -1,0 +1,113 @@
+{
+  "file": "/workspace/alien-research/out/mt5/V11_comm0_20261102_20261107.htm",
+  "expert": "Settings",
+  "period": "M1 (2026.11.02 - 2026.11.07)",
+  "deposit": "10 000.00",
+  "quality_raw": "100% real ticks",
+  "real_tick_pct": 100,
+  "bars": "MinSweepPoints=3.0",
+  "ticks": "2678646",
+  "net": "-7.97",
+  "pf": "0.69",
+  "trades": "65",
+  "win_trades": "18 (27.69%)",
+  "loss_trades": "47 (72.31%)",
+  "dd_max_eq": "10.12 (0.10%)",
+  "dd_rel_eq": "0.10% (10.12)",
+  "gross_profit": "17.57",
+  "gross_loss": "-25.54",
+  "deal_count": 130,
+  "commission_sum": -5.2,
+  "swap_sum": 0.0,
+  "profit_sum": -2.77,
+  "wins_num": 18.0,
+  "win_rate_pct": 27.69,
+  "dd_max_eq_money": 10.12,
+  "dd_max_eq_pct": 0.1,
+  "weeks": [
+    {
+      "week_start": "2026-11-02",
+      "trades": 65,
+      "wins": 18,
+      "losses": 47,
+      "net": -7.969999999999992,
+      "commission": -5.200000000000004,
+      "profit": -2.77,
+      "swap": 0.0
+    }
+  ],
+  "commission_samples": [
+    {
+      "time": "2026.11.02 10:10:19",
+      "symbol": "XAUUSD",
+      "type": "buy",
+      "entry": "in",
+      "volume": 0.01,
+      "price": 3898.87,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.0,
+      "comment": "ALIEN V11 SCALPER BUY"
+    },
+    {
+      "time": "2026.11.02 10:10:22",
+      "symbol": "XAUUSD",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.01,
+      "price": 3898.59,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": -0.28,
+      "comment": "sl 3898.61"
+    },
+    {
+      "time": "2026.11.02 10:11:55",
+      "symbol": "XAUUSD",
+      "type": "buy",
+      "entry": "in",
+      "volume": 0.01,
+      "price": 3897.38,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.0,
+      "comment": "ALIEN V11 SCALPER BUY"
+    },
+    {
+      "time": "2026.11.02 10:13:27",
+      "symbol": "XAUUSD",
+      "type": "sell",
+      "entry": "out",
+      "volume": 0.01,
+      "price": 3897.36,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": -0.02,
+      "comment": "sl 3897.41"
+    },
+    {
+      "time": "2026.11.02 10:20:28",
+      "symbol": "XAUUSD",
+      "type": "sell",
+      "entry": "in",
+      "volume": 0.01,
+      "price": 3892.91,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": 0.0,
+      "comment": "ALIEN V11 SCALPER SELL"
+    },
+    {
+      "time": "2026.11.02 10:20:41",
+      "symbol": "XAUUSD",
+      "type": "buy",
+      "entry": "out",
+      "volume": 0.01,
+      "price": 3893.56,
+      "commission": -0.04,
+      "swap": 0.0,
+      "profit": -0.65,
+      "comment": "sl 3893.52"
+    }
+  ]
+}
