@@ -107,7 +107,13 @@ void ParadaBatimento(){ ParadaGrava(1,-1); }
 bool VolteiPode()
 {
    string s=ArqLe("ALIEN_voltei.txt"); long t=StringToInteger(s);
-   return (t<=0 || (long)TimeGMT()-t>=15*60);
+   if(!(t<=0 || (long)TimeGMT()-t>=15*60)) return false;
+   // v12.4: trava atômica (dois gráficos ou religada rápida do MT5 ligando juntos -> só UMA mensagem)
+   string g="APROF_OI_T"; double now=(double)TimeGMT();
+   if(!GlobalVariableCheck(g)) GlobalVariableSet(g,0);
+   double old=GlobalVariableGet(g);
+   if(now-old<15*60) return false;
+   return GlobalVariableSetOnCondition(g,now,old);
 }
 void VolteiMarca(){ ArqGrava("ALIEN_voltei.txt",IntegerToString((long)TimeGMT())); }
 string ModoTxt(){ return TradeAtivo()?"operando na demo, dentro dos limites":(g_tradePausa?"pausado (você mandou pausar)":"modo assistente: só analiso e aviso, não mando ordem"); }
@@ -212,13 +218,14 @@ string FatosTxt(){ string f[]; FatosLe(f); if(ArraySize(f)==0) return ""; string
 string MemoriaTxt()
 {
    string f[]; FatosLe(f); MemLoad();
+   if(g_tgEmGrupo) return StringFormat("🧠 Neste grupo eu lembro das últimas %d mensagens da conversa. As coisas pessoais do Vitor ficam só no privado. Pra eu esquecer a conversa do grupo: /esquece",ArraySize(g_mem));
    string s="🧠 O que eu lembro:\n";
    if(ArraySize(f)==0) s+="Ainda nada sobre você. Se quiser, me conta tipo \"eu prefiro operar só em Londres\" que eu guardo.\n";
    else for(int i=0;i<ArraySize(f);i++) s+="• "+f[i]+"\n";
    s+=StringFormat("E as últimas %d mensagens da conversa. Pra eu esquecer tudo: /esquece",ArraySize(g_mem));
    return s;
 }
-void MemoriaApaga(){ ArqGrava(g_fatosArq,""); ArqGrava("ALIEN_chat_memoria.txt",""); ArrayResize(g_mem,0); }
+void MemoriaApaga(){ if(!g_tgEmGrupo) ArqGrava(g_fatosArq,""); ArqGrava(MemArq(),""); ArrayResize(g_mem,0); }
 
 // ---------------- 7. áudio do Telegram -> Gemini ----------------
 bool BaixaUrl(string url,uchar &out[],int timeout=15000)
@@ -299,11 +306,12 @@ void FotoHandle(string chat,string fileId,string legenda)
       string ctx=ContextJSON();
       if(ContextValido(ctx)) pedido+="\nPara comparar, a leitura do "+_Symbol+" no MT5 agora (números confiáveis do robô): "+StringSubstr(ctx,0,3500);
    }
-   string m=FatosTxt(); if(m!="") pedido+="\n"+m;
+   string m=g_tgEmGrupo?"":FatosTxt(); if(m!="") pedido+="\n"+m;
+   pedido+=GrupoNota();
    string t=GeminiMidia(img,"image/jpeg",pedido,700,0.4,erro);
    if(t==""){ SendMsg(erro=="limite grátis do Google"?"A IA grátis do Google tá no limite agora 😅 Me manda a foto de novo em 1 minutinho.":"Não consegui analisar a foto agora ("+erro+"). Tenta de novo daqui a pouco."); return; }
    t=AISemVeredito(t);
-   MemAdd("Vitor","[mandou uma foto] "+legenda); MemAdd("Alier",t);
+   MemAdd(g_tgQuem,"[mandou uma foto] "+legenda); MemAdd("Alier",t);
    SendMsg("👀 "+t);
    if(mercado) ObsSet(t,"👀");
 }
@@ -313,16 +321,19 @@ string SysGeral()
    return "Você é o Alier, assistente pessoal do Vitor no Telegram (ele é barbeiro e estuda trading). Ajuda em qualquer assunto: dúvidas, contas, textos, ideias, saúde do dia a dia, estudo. "
           "Português do Brasil, informal e acolhedor, curto (1 a 5 frases, a não ser que ele peça mais). Sem markdown. "
           "Se não souber ou for algo que muda rápido (notícia de hoje, preço, placar), diga que não tem acesso à internet em tempo real. "
+          "Horários sempre de Brasília. Se AGORA disser mercado FECHADO, nunca diga que está vendo o mercado ao vivo. "
           "Se ele parecer muito mal ou falar em se machucar, acolha e lembre do CVV: ligue 188 (grátis, 24h). "
           "Use o que você sabe dele e a conversa recente, sem repetir o que já disse. Nunca prometa lucro.";
 }
 void ChatGeral(string pergunta)
 {
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
-   string r=AIAskEx(SysGeral(),MemTxt()+"MENSAGEM DO VITOR:\n"+pergunta,500,false,false,0.7);
+   string agora="AGORA: "+TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES)+" (Brasília); "+MercadoTxt()+".\n";
+   string r=AIAskEx(SysGeral()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=AISemVeredito(SemCamposCrus(r));
-   FatoTalvez(pergunta); MemAdd("Vitor",pergunta); MemAdd("Alier",r);
+   if(!g_tgEmGrupo) FatoTalvez(pergunta);
+   MemAdd(g_tgQuem,pergunta); MemAdd("Alier",r);
    SendMsg(r);
 }
 void VozHandle(string chat,string fileId)

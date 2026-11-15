@@ -49,8 +49,9 @@ bool SendJsonMsg(string chat,string text,string markup)
    if(code!=200) Print("Telegram respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
-bool SendMsgKb(string text){ if(!TgOk()) return false; return SendJsonMsg(g_cfgTgChat,text,TgKbFixo()); }
-bool SendMsgMarkup(string text,string markup){ if(!TgOk()) return false; return SendJsonMsg(g_cfgTgChat,text,markup); }
+// teclado fixo só no privado; no grupo vai o texto sem teclado
+bool SendMsgKb(string text){ if(!TgOk()) return false; if(g_tgEmGrupo) return SendJsonMsg(TgDestino(),text,""); return SendJsonMsg(TgDestino(),text,TgKbFixo()); }
+bool SendMsgMarkup(string text,string markup){ if(!TgOk()) return false; return SendJsonMsg(TgDestino(),text,markup); }
 void TgAckCb(string qid)
 {
    if(!TgTokenOk() || qid=="") return;

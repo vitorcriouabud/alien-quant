@@ -2,6 +2,10 @@
 // ---- configuração pessoal local (MQL5\Files\ALIEN_config.txt) ----
 // Token, chat id e chaves ficam NESTE arquivo do seu PC, não no robô. Atualizar o robô não apaga.
 string g_cfgTgToken="", g_cfgTgChat=""; bool g_cfgAssistente=false; string g_cfgOrigem="parâmetros";
+// v12.4: grupo do Telegram (opcional). telegram_grupo_id fica no ALIEN_config.txt; o Vitor manda /grupo no grupo pra liberar.
+string g_cfgGrupo=""; bool g_cfgGrupoAlertas=false;
+// para onde vai a resposta da mensagem que está sendo atendida ("" = chat privado do dono)
+string g_tgReply=""; bool g_tgEmGrupo=false; string g_tgQuem="Vitor";
 string CfgArq(){ return "ALIEN_config.txt"; }
 // grava/troca uma linha "chave=valor" no ALIEN_config.txt (mantém o resto)
 void CfgSalva(string chave,string valor)
@@ -18,7 +22,7 @@ void CfgSalva(string chave,string valor)
 }
 void CfgLoad()
 {
-   g_cfgTgToken=InpTelegramToken; g_cfgTgChat=InpTelegramChatId; AICfgInit(); g_cfgAssistente=false; g_cfgOrigem="parâmetros";
+   g_cfgTgToken=InpTelegramToken; g_cfgTgChat=InpTelegramChatId; AICfgInit(); g_cfgAssistente=false; g_cfgOrigem="parâmetros"; g_cfgGrupo=""; g_cfgGrupoAlertas=false;
    int h=FileOpen(CfgArq(),FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
    if(h==INVALID_HANDLE) return;
    int n=0;
@@ -34,6 +38,8 @@ void CfgLoad()
       else if(k=="gemini_chave_1"){ g_cfgAI2Key=v; n++; }
       else if(k=="gemini_chave_2"){ g_cfgGem2=v; n++; }
       else if(k=="xai_chave"){ g_cfgAIKey=v; n++; }
+      else if(k=="telegram_grupo_id"){ g_cfgGrupo=v; n++; }
+      else if(k=="grupo_alertas"){ g_cfgGrupoAlertas=(v=="1" || v=="sim" || v=="true"); n++; }
       else if(k=="modo"){ string m=v; StringToLower(m); g_cfgAssistente=(StringFind(m,"assist")==0); n++; }
    }
    FileClose(h);
@@ -56,7 +62,16 @@ string UrlEnc(string s)
 // WebRequest não existe no testador -> Telegram desligado lá
 bool TgTokenOk(){ return InpUseTelegram && StringLen(g_cfgTgToken)>20 && !MQLInfoInteger(MQL_TESTER); }
 bool TgOk(){ return TgTokenOk() && StringLen(g_cfgTgChat)>0; }
-bool SendMsg(string text){ if(!TgOk()) return false; return SendMsgTo(g_cfgTgChat,text); }
+// destino da resposta: o chat de onde veio a mensagem (grupo ou privado); fora disso, o privado do dono
+string TgDestino(){ return g_tgReply!=""?g_tgReply:g_cfgTgChat; }
+bool SendMsg(string text)
+{
+   if(!TgOk()) return false;
+   bool ok=SendMsgTo(TgDestino(),text);
+   // aviso automático (fora de uma conversa): só vai pro grupo se grupo_alertas=1
+   if(g_tgReply=="" && g_cfgGrupoAlertas && g_cfgGrupo!="" && g_cfgGrupo!=g_cfgTgChat) SendMsgTo(g_cfgGrupo,text);
+   return ok;
+}
 bool SendMsgTo(string chat,string text)
 {
    if(!TgTokenOk() || chat=="") return false;
@@ -78,7 +93,7 @@ bool SendPhoto(string file,string caption)
    uchar img[]; FileReadArray(h,img); FileClose(h);
    string bd="----ALIENPROF"+IntegerToString(GetTickCount());
    char buf[]; ArrayResize(buf,0);
-   AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n"+g_cfgTgChat+"\r\n");
+   AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n"+TgDestino()+"\r\n");
    if(StringLen(caption)>1000) caption=StringSubstr(caption,0,1000);
    AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n"+caption+"\r\n");
    AddStr(buf,"--"+bd+"\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"grafico.png\"\r\nContent-Type: image/png\r\n\r\n");
