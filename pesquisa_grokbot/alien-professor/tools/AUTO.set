@@ -1,0 +1,20 @@
+; ALIEN PROFESSOR AUTO - limites seguros (padrão)
+InpAllowRealAccount=false
+InpRiskUSD=45
+InpScoreTrade=7
+InpMagic=77261115
+InpSpreadMaxPctStop=10
+InpDDPausaPct=15
+InpLimiteMin=60
+InpMaxHoras=8
+InpFecharHHMM=2345
+InpBloquearHorarioRuim=true
+InpMaxStopsDia=2
+InpMetaDiaUSD=100
+InpPerdaMaxDiaUSD=90
+InpUseTelegram=true
+InpTelegramToken=
+InpTelegramChatId=
+InpUseAI=true
+InpAIKey=
+InpAIVeto=false
