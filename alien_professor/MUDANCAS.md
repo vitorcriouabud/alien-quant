@@ -1,5 +1,20 @@
 # Mudanças do ALIEN PROFESSOR
 
+## Versão 12.5 — Alier sabe o dia, a hora e a agenda (15/11/2026)
+**O que estava errado**
+- No domingo ele falou "reabre domingo à noite, lá pelas 18h" e "revisa antes de domingo", sendo que já era domingo. E disse que não via notícias.
+
+**O que mudou**
+- Toda resposta da IA (privado, grupo, foto, resumo) agora recebe: dia da semana, data e hora de Brasília, se o mercado tá aberto ou fechado e **quando reabre** (ex.: "REABRE domingo 15/11 20:00 Brasília, em 4h50min"). A conta é feita pelo horário de Nova York: com o horário de verão dos EUA o ouro abre 19:00 de Brasília; no resto do ano, 20:00. Também sabe da pausa diária (1h por dia, seg a qui).
+- Ele recebe a agenda econômica dos próximos 7 dias (notícias fortes e médias do dólar, com previsão e anterior, e feriados) e os resultados fortes da última semana. Foi proibido de dizer "não vejo notícias".
+- Perguntou "o que esperar da abertura?" Ele recebe o fechamento de sexta, máxima/mínima/faixa da semana, semana anterior, VWAP da semana e o viés D1/H4/H1, e responde com cenários curtos ("se abrir acima de X... abaixo de Y..."), como observação, não certeza. Lembra do gap e do spread largo: melhor esperar os primeiros 15-30 min.
+- Ele também sabe a versão dele, se a conta é demo, se está no modo assistente, os trades e stops de hoje, as posições abertas, a killzone de agora e a próxima.
+- Não pode inventar horário, preço ou notícia que não esteja nos dados.
+- O botão/comando de notícias agora mostra também as notícias importantes dos próximos 7 dias.
+
+**No grupo**
+- Não faz pergunta pessoal (barbearia, família) e não puxa assunto fora do tema. Fica no que a pessoa perguntou.
+
 ## Versão 12.4 — Alier no grupo (15/11/2026)
 **Grupo do Telegram**
 - O Alier agora fala no seu grupo. Pra liberar: no grupo, você (Vitor) manda **/grupo** uma vez. Ele guarda o número do grupo sozinho no ALIEN_config.txt (linha telegram_grupo_id).

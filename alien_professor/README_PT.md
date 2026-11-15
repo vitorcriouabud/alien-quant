@@ -1,4 +1,4 @@
-# ALIEN PROFESSOR — manual simples (versão 12.4, agente Alier)
+# ALIEN PROFESSOR — manual simples (versão 12.5, agente Alier)
 
 É um **indicador** pro MT5. Ele **não abre, não fecha e não mexe em ordem nenhuma**. Ele lê o gráfico pra você e mostra tudo num painel preto e amarelo. **Quem decide é você.**
 
@@ -196,7 +196,7 @@ Token do Telegram, chat id e chaves ficam no arquivo **`MQL5\Files\ALIEN_config.
 ### Agente Alier (novo na 12.3)
 - **Botões fixos** embaixo do chat: 📰 Notícias, 📊 Análise, 🧭 Plano, 📸 Foto, ℹ️ Status, ⏸️ Pausa, ▶️ Retoma.
 - **"Voltei ✅"** só chega depois de uma **queda de verdade** (MT5 fechou, caiu a energia/internet, conta reconectou), no máximo 1 a cada 15 min, sem saldo e com o motivo em português. Tirar/trocar gráfico ou mudar parâmetro não avisa.
-- **/status** mostra *"Alier versão 12.4, ligado às HH:MM (Brasília)"*. Todo horário que o Alier escreve é de **Brasília**; o resumo da semana sai **domingo 20:00 (Brasília)**.
+- **/status** mostra *"Alier versão 12.5, ligado às HH:MM (Brasília)"*. Todo horário que o Alier escreve é de **Brasília**; o resumo da semana sai **domingo 20:00 (Brasília)**.
 - **Notícias** perguntadas no texto ("e as notícias?") são respondidas pelo próprio robô, sem IA, curtinho.
 - **Conversa livre:** com as duas Gemini, fica a resposta **mais curta e limpa**. Na análise: *"As duas leituras bateram ✅"* ou *"discordaram, então eu esperaria 🟡"*.
 - **Avisos sozinhos** (*InpAlertasProativos*, padrão ligado; máx. *InpAlertasMaxHora* = 6 por hora; mesmo tipo a cada *InpAlertaCooldownMin* = 20 min; sem repetir depois de reiniciar): 💧 varrida da máxima/mínima da Ásia, de ontem ou de Londres; 🔄 CHoCH / 📈📉 BOS no tempo da estrutura (M5); 🧱 preço no bloco de ordens; 〰️ toque na VWAP; ⚡ setup 7/7; 📰 notícia forte em 15 min.
