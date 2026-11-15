@@ -1,4 +1,4 @@
-# ALIEN PROFESSOR — manual simples (versão 12.3, agente Alier)
+# ALIEN PROFESSOR — manual simples (versão 12.4, agente Alier)
 
 É um **indicador** pro MT5. Ele **não abre, não fecha e não mexe em ordem nenhuma**. Ele lê o gráfico pra você e mostra tudo num painel preto e amarelo. **Quem decide é você.**
 
@@ -184,6 +184,11 @@ Se ligar *InpAprenderDesativar*, o robô pula a faixa/lado/sessão que já tem �
 
 Como ler: as 2 semanas positivas são só **13 trades** (sorte ou azar cabem aí). O ano de 2025 perdeu e chegou a cair 31%. A comissão do testador é US$ 8 por lote; na sua conta ECN é ~US$ 16, então na vida real seria **pior**. Ticks gerados não são confiáveis (foi o que enganou no V11).
 
+### Alier no grupo (novo na 12.4)
+- No grupo, mande **/grupo** uma vez (você, Vitor) pra liberar. Depois qualquer pessoa do grupo pode usar comandos, marcar @Alierprofessorbot ou responder uma mensagem dele.
+- Ele responde onde perguntaram. Avisos automáticos só no privado, a não ser que você coloque `grupo_alertas=1` no ALIEN_config.txt.
+- Pelo modo de privacidade do Telegram, o bot só vê no grupo comandos, menções e respostas a ele.
+
 ### Configuração pessoal (novo na 12.3)
 Token do Telegram, chat id e chaves ficam no arquivo **`MQL5\Files\ALIEN_config.txt`** (não dentro do robô), uma por linha:
 `telegram_token=...`, `telegram_chat_id=...`, `gemini_chave_1=...`, `gemini_chave_2=...`, `modo=assistente` (opcional). Se o arquivo não existir, valem os parâmetros. Se o chat id estiver vazio, mande **/start** pro bot: ele grava sozinho. Atualizar (dois cliques no **ATUALIZAR.bat**, que baixa do GitHub, ou o INSTALAR.bat de um zip novo) **nunca apaga** esse arquivo. Veja `COMO_ATUALIZAR.md` e `MUDANCAS.md`.
@@ -191,7 +196,7 @@ Token do Telegram, chat id e chaves ficam no arquivo **`MQL5\Files\ALIEN_config.
 ### Agente Alier (novo na 12.3)
 - **Botões fixos** embaixo do chat: 📰 Notícias, 📊 Análise, 🧭 Plano, 📸 Foto, ℹ️ Status, ⏸️ Pausa, ▶️ Retoma.
 - **"Voltei ✅"** só chega depois de uma **queda de verdade** (MT5 fechou, caiu a energia/internet, conta reconectou), no máximo 1 a cada 15 min, sem saldo e com o motivo em português. Tirar/trocar gráfico ou mudar parâmetro não avisa.
-- **/status** mostra *"Alier versão 12.3, ligado às HH:MM (Brasília)"*. Todo horário que o Alier escreve é de **Brasília**; o resumo da semana sai **domingo 20:00 (Brasília)**.
+- **/status** mostra *"Alier versão 12.4, ligado às HH:MM (Brasília)"*. Todo horário que o Alier escreve é de **Brasília**; o resumo da semana sai **domingo 20:00 (Brasília)**.
 - **Notícias** perguntadas no texto ("e as notícias?") são respondidas pelo próprio robô, sem IA, curtinho.
 - **Conversa livre:** com as duas Gemini, fica a resposta **mais curta e limpa**. Na análise: *"As duas leituras bateram ✅"* ou *"discordaram, então eu esperaria 🟡"*.
 - **Avisos sozinhos** (*InpAlertasProativos*, padrão ligado; máx. *InpAlertasMaxHora* = 6 por hora; mesmo tipo a cada *InpAlertaCooldownMin* = 20 min; sem repetir depois de reiniciar): 💧 varrida da máxima/mínima da Ásia, de ontem ou de Londres; 🔄 CHoCH / 📈📉 BOS no tempo da estrutura (M5); 🧱 preço no bloco de ordens; 〰️ toque na VWAP; ⚡ setup 7/7; 📰 notícia forte em 15 min.

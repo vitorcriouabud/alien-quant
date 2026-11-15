@@ -1,5 +1,18 @@
 # Mudanças do ALIEN PROFESSOR
 
+## Versão 12.4 — Alier no grupo (15/11/2026)
+**Grupo do Telegram**
+- O Alier agora fala no seu grupo. Pra liberar: no grupo, você (Vitor) manda **/grupo** uma vez. Ele guarda o número do grupo sozinho no ALIEN_config.txt (linha telegram_grupo_id).
+- No grupo, qualquer pessoa pode usar: comandos (/status, /analise, /pausa...), marcar @Alierprofessorbot ou responder uma mensagem dele. O resto da conversa do grupo ele ignora.
+- Ele responde no mesmo lugar onde perguntaram: grupo no grupo, privado no privado. No grupo não aparecem os botões fixos.
+- Os avisos automáticos (notícia, varrida, bom dia, resumo) continuam só no seu privado. Se quiser também no grupo, coloque grupo_alertas=1 no ALIEN_config.txt.
+- A conversa do grupo tem memória separada. O que ele sabe de você fica só no privado.
+
+**Correções**
+- A mensagem de "ligado/voltei" não sai mais duas vezes quando o MT5 liga.
+- Nunca mais fala "horário do servidor": todo horário é de Brasília.
+- Com o mercado fechado (fim de semana), ele avisa "mercado fechado desde tal hora" e não finge que tá vendo ao vivo. E não manda print do gráfico depois de toda resposta; só se você pedir print ou gráfico (ou usar /analise e /foto).
+
 ## Versão 12.3 — agente Alier (15/11/2026)
 **Telegram mais fácil**
 - Botões fixos no chat: Notícias, Análise, Plano, Agenda, Foto, Status, Pausa, Retoma. Pausa e Retoma pedem confirmação.

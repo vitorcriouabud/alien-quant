@@ -8,6 +8,8 @@
 3. Abra o MT5, tire o robô do gráfico e arraste de novo **Consultor expert > ALIEN > ALIEN_PROFESSOR_AUTO**.
 4. No Telegram, toque em **ℹ️ Status**: tem que aparecer a versão nova.
 
+**No grupo, mande /grupo uma vez (você, Vitor) pra liberar.**
+
 Sua configuração (token, chat e chaves) fica em `MQL5\Files\ALIEN_config.txt` e **nunca é apagada** pela atualização.
 
 ## Pastas do kit
