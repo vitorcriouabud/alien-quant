@@ -214,6 +214,9 @@ Token do Telegram, chat id e chaves ficam no arquivo **`MQL5\Files\ALIEN_config.
 ### Subir seus dados pro GitHub (kit pessoal)
 Dois cliques em **SUBIR_GITHUB.bat**: envia o código `.mq5` e os `ALIEN_*.csv` para a branch **alien-dados** de `vitorcriouabud/alien-quant` (nunca na principal). Nunca envia `.ex5`, `.set` nem chaves: tem `.gitignore` e uma trava que bloqueia qualquer coisa parecida com chave/token. Sem Git: `winget install Git.Git`.
 
+### Balão da IA no gráfico (InpBalaoIA, ligado)
+Depois de cada análise da IA, aviso automático, resposta sobre o gráfico ou foto, aparece perto do preço (lado direito) um balão preto com borda amarela: 1 ou 2 frases curtas e a etiqueta **"obs. da IA, não certeza"** com a hora de Brasília. O texto é um resumo local da última resposta (até ~120 letras), sem pergunta extra pra IA. Pra esconder: InpBalaoIA=false.
+
 ## 9. VIGIA — deixar o MT5 sempre ligado (VIGIA_INSTALAR.bat)
 O vigia confere **a cada 60 segundos** se o MT5 está aberto e respondendo. Se fechou, ou travou por 3 checagens seguidas, ele **abre de novo**. O MT5 reabre os gráficos e robôs do último perfil.
 1. Dois cliques em **VIGIA_INSTALAR.bat**. Ele acha o MT5 sozinho (se tiver mais de um, pergunta qual) e liga o vigia toda vez que você entra no Windows (Tarefa Agendada; se o Windows não deixar, usa a pasta *Inicializar*). Não precisa ser administrador.

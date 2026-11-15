@@ -49,6 +49,7 @@ input int    InpAlertaCooldownMin = 20;          // Mesmo tipo de aviso: esperar
 input bool   InpDisciplina        = true;        // Perguntar "seguiu o plano?" quando um trade fecha
 input bool   InpVoz               = true;        // Entender áudio do Telegram (usa a chave Gemini)
 input int    InpPausaAposStopMin  = 0;           // Depois de um stop, segurar os avisos automáticos N min (0 = desligado; não trava ordens)
+input bool   InpBalaoIA           = true;        // Mostrar no gráfico a última observação da IA (balão perto do preço)
 input bool   InpBackupSemanal     = true;        // Copiar os ALIEN_*.csv toda semana para MQL5/Files/ALIEN_backup/data
 #define InpRiscoUSD InpRiskUSD
 
@@ -3341,6 +3342,7 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
    if(plano) VereditoLog("chat");
    FatoTalvez(pergunta); MemAdd("Vitor",pergunta); MemAdd("Alier",r);
    if((sym=="" || sym==_Symbol) && plano) AIPanelSet(r);
+   if((sym=="" || sym==_Symbol) && (plano || (mercado && !soNoticia))) ObsSet(r,plano?"🎯":"💬");
    string msg=r;
    if(titulo!="") msg=titulo+"\n"+r;
    if(plano) msg+="\n\n(opinião — quem decide é você)";
@@ -3540,6 +3542,7 @@ void TgPreAlerta()
       long d=(long)(g_news[i].t-now); if(d<=0 || d>InpPreAlertaMin*60) continue;
       string key="|"+IntegerToString((long)g_news[i].id)+"|"; if(StringFind(g_alertados,key)>=0) continue;
       g_alertados+=IntegerToString((long)g_news[i].id)+"|"; TgEstadoSave();
+      ObsSet(StringFormat("📰 Notícia forte de %s às %s (Brasília): %s. Cuidado com a volatilidade.",g_news[i].cur,HHMMBR(g_news[i].t),g_news[i].nome),"📰");
       SendMsg(StringFormat("📰 Atenção: notícia forte de %s daqui a %d min (às %s, Brasília): %s.%s",g_news[i].cur,(int)(d/60)+1,HHMMBR(g_news[i].t),g_news[i].nome,
               InpCalBloquearForte?StringFormat(" Eu não entro %d min antes/depois. Segura a mão nas posições.",InpNoticiaMin):""));
    }
@@ -3563,7 +3566,7 @@ void TgResumos()
       string ctx=ContextJSON();
       if(AIOn() && ContextValido(ctx)) r=AIAskEx(SysChatAnalise(),"CONTEXTO:\n"+ctx+"\n\nMENSAGEM: resumo informal da abertura de "+nomes[i]+", fecha com VEREDITO.",600,true,true,0.2);
       if(r=="") r=Narrativa(b,g_pare!="",NoticiaAviso(now))+"\nNotícias (Brasília): "+NewsListaBR(4," | ");
-      else { r=SemAvisoEdge(SemCamposCrus(r)); AIPanelSet(r); VereditoLog("resumo"); }
+      else { r=SemAvisoEdge(SemCamposCrus(r)); AIPanelSet(r); ObsSet(r,"🕗"); VereditoLog("resumo"); }
       SendMsg("Abertura de "+nomes[i]+" no "+_Symbol+"\n"+r);
       TgFoto(FotoLegenda());
    }
@@ -4327,6 +4330,7 @@ void FotoHandle(string chat,string fileId,string legenda)
    t=AISemVeredito(t);
    MemAdd("Vitor","[mandou uma foto] "+legenda); MemAdd("Alier",t);
    SendMsg("👀 "+t);
+   if(mercado) ObsSet(t,"👀");
 }
 // conversa sobre qualquer assunto (não é mercado)
 string SysGeral()
@@ -4412,6 +4416,7 @@ void ProEnvia(string tipo,string key,int dir,double preco,string msg)
    double r=g_atr>0?g_atr:preco*0.0005;
    bool mandou=false;
    if(TgOk()) mandou=SendMsg(msg); else Print("ALIEN aviso: ",msg);
+   ObsSet(msg,"🔔");
    CsvAppend(g_alLogArq,g_alLogHdr,StringFormat("%s;%s;%s;%s;%d;%s;%s;;;;;%s",TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES),
       TimeToString(SrvParaBR(TimeCurrent()),TIME_DATE|TIME_MINUTES),_Symbol,tipo,dir,Fmt(preco),Fmt(r),mandou?"sim":"nao"));
    ProSave();
@@ -4689,8 +4694,155 @@ void NoticiaResultado()
          double p0=iOpen(_Symbol,PERIOD_M1,s0), p5=iClose(_Symbol,PERIOD_M1,s5);
          if(p0>0 && p5>0) mov=StringFormat(" O %s andou %+.2f nos 5 min depois (%s → %s).",_Symbol,p5-p0,Fmt(p0),Fmt(p5));
       }
+      ObsSet(StringFormat("📰 Saiu %s (%s Brasília)%s.",g_news[i].nome,HHMMBR(g_news[i].t),num!=""?": "+num:""),"📰");
       SendMsg(StringFormat("📰 Saiu %s (%s, %s Brasília)%s.%s Espera a poeira baixar antes de entrar.",g_news[i].nome,g_news[i].cur,HHMMBR(g_news[i].t),num!=""?": "+num:" (sem número no calendário)",mov));
    }
+}
+
+//+------------------------------------------------------------------+
+// BALÃO DA IA NO GRÁFICO (v12.3): última observação da IA perto do preço, lado direito.
+// Usa só o texto que já chegou (resumo local ~120 caracteres). Nenhuma chamada extra à IA.
+//+------------------------------------------------------------------+
+#define OBS_PFX "ALIEN_OBS_"
+string   g_obsTxt="";
+datetime g_obsT=0;
+bool     g_obsSujo=false;
+// tira veredito, avisos, campos e quebras; fica com 1-2 frases curtas (<= max) cortadas em palavra
+string ObsResumo(string t,int maxc=120)
+{
+   string ls[]; int n=StringSplit(t,'\n',ls); string o="";
+   for(int i=0;i<n;i++)
+   {
+      string l=ls[i]; StringTrimLeft(l); StringTrimRight(l);
+      if(l=="") continue;
+      string u=l; StringToUpper(u);
+      if(StringFind(u,"VEREDITO")==0 || StringFind(u,"(OPINI")==0 || StringFind(u,"AS DUAS LEITURAS")==0 || StringFind(u,"SÓ UMA LEITURA")==0) continue;
+      o+=(o==""?"":" ")+l;
+   }
+   StringReplace(o,"*",""); StringReplace(o,"  "," ");
+   if(StringLen(o)<=maxc) return o;
+   // até 2 frases que caibam
+   int corte=-1, frases=0;
+   for(int i=0;i<StringLen(o) && i<maxc;i++)
+   {
+      ushort c=StringGetCharacter(o,i);
+      if((c=='.' || c=='!' || c=='?') && (i+1>=StringLen(o) || StringGetCharacter(o,i+1)==' ')){ corte=i+1; frases++; if(frases>=2) break; }
+   }
+   if(corte>=40) return StringSubstr(o,0,corte);
+   int sp=-1; for(int i=MathMin(maxc,StringLen(o))-1;i>0;i--) if(StringGetCharacter(o,i)==' '){ sp=i; break; }
+   if(sp<30) sp=maxc-1;
+   return StringSubstr(o,0,sp)+"…";
+}
+bool ObsTemEmoji(string t){ return StringLen(t)>0 && StringGetCharacter(t,0)>=0x2000; }
+void ObsSet(string t,string emoji="🤖")
+{
+   if(!InpBalaoIA || t=="") return;
+   string r=ObsResumo(t,120); if(r=="") return;
+   if(!ObsTemEmoji(r)) r=emoji+" "+r;
+   g_obsTxt=r; g_obsT=TimeCurrent(); g_obsSujo=true;
+   ObsDesenha();
+}
+// quebra em linhas que cabem em maxPx (mede com a própria fonte)
+int ObsQuebra(string t,string fonte,int tam,int maxPx,string &linhas[])
+{
+   ArrayResize(linhas,0);
+   TextSetFont(fonte,-tam*10);
+   string ws[]; int n=StringSplit(t,' ',ws); string cur="";
+   for(int i=0;i<n;i++)
+   {
+      if(ws[i]=="") continue;
+      string tent=(cur==""?ws[i]:cur+" "+ws[i]);
+      uint w=0,h=0; TextGetSize(tent,w,h);
+      int wpx=(int)(w*4/3)+StringLen(tent);   // margem: DPI e emoji
+      if(wpx>maxPx && cur!="")
+      { int k=ArraySize(linhas); ArrayResize(linhas,k+1); linhas[k]=cur; cur=ws[i]; }
+      else cur=tent;
+      if(ArraySize(linhas)>=4) break;
+   }
+   if(cur!="" && ArraySize(linhas)<4){ int k=ArraySize(linhas); ArrayResize(linhas,k+1); linhas[k]=cur; }
+   return ArraySize(linhas);
+}
+void ObsObj(string n,ENUM_OBJECT tipo)
+{
+   if(ObjectFind(0,n)<0)
+   {
+      ObjectCreate(0,n,tipo,0,0,0);
+      ObjectSetInteger(0,n,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+      ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,n,OBJPROP_HIDDEN,true);
+      ObjectSetInteger(0,n,OBJPROP_BACK,false);
+   }
+}
+void ObsApaga(){ ObjectsDeleteAll(0,OBS_PFX); }
+void ObsDesenha()
+{
+   if(!InpBalaoIA || g_obsTxt==""){ ObsApaga(); return; }
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS), ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS);
+   if(cw<200 || ch<120) return;
+   double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
+   int px=0, py=ch/2;
+   datetime tb=iTime(_Symbol,_Period,0); if(tb==0) tb=TimeCurrent();
+   if(bid<=0 || !ChartTimePriceToXY(0,0,tb,bid,px,py) || py<0 || py>ch) py=ch/2;
+   string fonte=GraficoFonte(); int tam=9;
+   int boxW=270, pad=8;
+   string ls[]; int nl=ObsQuebra(g_obsTxt,fonte,tam,boxW-2*pad,ls);
+   int lh=16, boxH=pad*2+nl*lh+14;
+   int x=cw-boxW-70;                       // lado direito, antes da escala de preço
+   if(x<5) x=5;
+   int y=py-boxH-14;                       // balão acima do preço, com a "ponta" descendo até ele
+   if(y<20) y=py+14;                       // sem espaço em cima: vai pra baixo
+   if(y+boxH>ch-5) y=ch-5-boxH;
+   string b=OBS_PFX+"BOX";
+   ObsObj(b,OBJ_RECTANGLE_LABEL);
+   ObjectSetInteger(0,b,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,b,OBJPROP_YDISTANCE,y);
+   ObjectSetInteger(0,b,OBJPROP_XSIZE,boxW);  ObjectSetInteger(0,b,OBJPROP_YSIZE,boxH);
+   ObjectSetInteger(0,b,OBJPROP_BGCOLOR,clrBlack);
+   ObjectSetInteger(0,b,OBJPROP_BORDER_TYPE,BORDER_FLAT);
+   ObjectSetInteger(0,b,OBJPROP_COLOR,clrGold);
+   ObjectSetInteger(0,b,OBJPROP_WIDTH,2);
+   // ponta do balão apontando para o preço
+   string p=OBS_PFX+"PONTA";
+   ObsObj(p,OBJ_LABEL);
+   bool emCima=(y<py);
+   ObjectSetString(0,p,OBJPROP_TEXT,emCima?"▼":"▲");
+   ObjectSetString(0,p,OBJPROP_FONT,"Arial");
+   ObjectSetInteger(0,p,OBJPROP_FONTSIZE,11);
+   ObjectSetInteger(0,p,OBJPROP_COLOR,clrGold);
+   ObjectSetInteger(0,p,OBJPROP_ANCHOR,emCima?ANCHOR_UPPER:ANCHOR_LOWER);
+   ObjectSetInteger(0,p,OBJPROP_XDISTANCE,x+boxW-30);
+   ObjectSetInteger(0,p,OBJPROP_YDISTANCE,emCima?y+boxH-4:y+4);
+   for(int i=0;i<4;i++)
+   {
+      string n=OBS_PFX+"L"+IntegerToString(i);
+      if(i>=nl){ ObjectDelete(0,n); continue; }
+      ObsObj(n,OBJ_LABEL);
+      ObjectSetString(0,n,OBJPROP_TEXT,ls[i]);
+      ObjectSetString(0,n,OBJPROP_FONT,fonte);
+      ObjectSetInteger(0,n,OBJPROP_FONTSIZE,tam);
+      ObjectSetInteger(0,n,OBJPROP_COLOR,clrWhite);
+      ObjectSetInteger(0,n,OBJPROP_ANCHOR,ANCHOR_LEFT_UPPER);
+      ObjectSetInteger(0,n,OBJPROP_XDISTANCE,x+pad);
+      ObjectSetInteger(0,n,OBJPROP_YDISTANCE,y+pad+i*lh);
+   }
+   string tg=OBS_PFX+"TAG";
+   ObsObj(tg,OBJ_LABEL);
+   ObjectSetString(0,tg,OBJPROP_TEXT,"obs. da IA, não certeza · "+TimeToString(SrvParaBR(g_obsT),TIME_MINUTES)+" Brasília");
+   ObjectSetString(0,tg,OBJPROP_FONT,"Arial");
+   ObjectSetInteger(0,tg,OBJPROP_FONTSIZE,7);
+   ObjectSetInteger(0,tg,OBJPROP_COLOR,clrGold);
+   ObjectSetInteger(0,tg,OBJPROP_ANCHOR,ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0,tg,OBJPROP_XDISTANCE,x+pad);
+   ObjectSetInteger(0,tg,OBJPROP_YDISTANCE,y+pad+nl*lh+1);
+   g_obsSujo=false;
+   ChartRedraw(0);
+}
+// reposiciona quando o preço anda (no máximo 1x por segundo)
+void ObsTimer()
+{
+   if(!InpBalaoIA || g_obsTxt=="") return;
+   static uint ult=0; uint ms=GetTickCount();
+   if(!g_obsSujo && ms-ult<1000) return;
+   ult=ms; ObsDesenha();
 }
 
 string SvcStatus()
@@ -4717,7 +4869,7 @@ void TentaOperar()
       g_status = g_tradePausa?"PAUSADO por /pausa (não opera)":("MODO ASSISTENTE: só analisa e avisa"+(blk!=""?" | "+blk:""));
       if(!cruzou) return;
       Diario(b,"sinal (modo assistente, não operou)"+(blk!=""?" - "+blk:""));
-      string ia2=AIAsk(StateJSON(b)); if(ia2!=""){ AIPanelSet(ia2); VereditoLog("sinal"); }
+      string ia2=AIAsk(StateJSON(b)); if(ia2!=""){ AIPanelSet(ia2); ObsSet(ia2,"🤖"); VereditoLog("sinal"); }
       Notifica(StringFormat("Achei um sinal de %s no %s, nota %d/10 — mas tô no modo assistente, não operei.\nEntrada %s, stop %s, alvo %s, lote %.2f (risco ~$%.2f).\n%s%s",
                b.dir==1?"🟢 COMPRA":"🔴 VENDA",_Symbol,b.score,Fmt(b.entry),Fmt(b.stop),b.target>0?Fmt(b.target):"-",b.lot,b.riskUSD,
                blk!=""?"Aviso: "+blk+"\n":"",Narrativa(b,false,""))+(ia2!=""?"\n\nO que a IA achou:\n"+ia2:""));
@@ -4742,7 +4894,7 @@ void TentaOperar()
    double lot=NormalizeDouble(b.lot,2);
    string cm=StringFormat("APROF %d/10",b.score);
    // IA: comenta o sinal; só pode VETAR se InpAIVeto = true (nunca abre trade)
-   string ia=AIAsk(StateJSON(b)); if(ia!=""){ AIPanelSet(ia); VereditoLog("sinal"); }
+   string ia=AIAsk(StateJSON(b)); if(ia!=""){ AIPanelSet(ia); ObsSet(ia,"🤖"); VereditoLog("sinal"); }
    if(AIVetou(ia,b.dir)){ Diario(b,"pulado: IA vetou"); Notifica(StringFormat("A IA vetou o sinal do %s nota %d/10. Não entrei. %s",_Symbol,b.score,ia)); return; }
    bool ok=false; bool limite=(StringFind(b.entNome,"FVG")>=0 || StringFind(b.entNome,"vazio")>=0);
    if(limite)
@@ -4788,9 +4940,10 @@ int OnInit()
    EventSetTimer(1);
    return INIT_SUCCEEDED;
 }
-void OnDeinit(const int r){ EventKillTimer(); ParadaDeinit(r); TgEstadoSave(); TgMasterSolta(); Core_Deinit(); }
+void OnDeinit(const int r){ EventKillTimer(); ObsApaga(); ParadaDeinit(r); TgEstadoSave(); TgMasterSolta(); Core_Deinit(); }
 void OnTimer()
 {
+   ObsTimer();
    if(MQLInfoInteger(MQL_TESTER)) return;          // no testador não existe WebRequest/calendário
    Core_Update(true);
    static ulong lastPoll=0, lastMin=0; ulong ms=GetTickCount64();
@@ -4813,7 +4966,7 @@ void OnTick()
       TentaOperar();
       g_statusSvc=SvcStatus();
       if(AIOn() && InpAIMinutos>0 && TimeCurrent()-g_aiLast>=InpAIMinutos*60)
-      { Plano pb=MelhorPlano(); string t=AIAsk(StateJSON(pb)); if(t!=""){ AIPanelSet(t); VereditoLog("periodo"); } }
+      { Plano pb=MelhorPlano(); string t=AIAsk(StateJSON(pb)); if(t!=""){ AIPanelSet(t); ObsSet(t,"🤖"); VereditoLog("periodo"); } }
       if(ContaBloqueada()){ g_extra="BLOQUEADO: CONTA REAL - este robô só opera em DEMO"; g_extraC=clrRed; }
       else { g_extra="ROBÔ: "+g_status; g_extraC= StringFind(g_status,"aguardando")==0||StringFind(g_status,"em operação")==0 ? clrLime : (StringFind(g_status,"MODO ASSISTENTE")==0 ? clrGold : clrOrangeRed); }
    }
@@ -4842,4 +4995,5 @@ void OnTradeTransaction(const MqlTradeTransaction &tr,const MqlTradeRequest &rq,
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam)
 {
    EngChartEvent(id,sparam);
+   if(id==CHARTEVENT_CHART_CHANGE) ObsDesenha();
 }

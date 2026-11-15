@@ -696,6 +696,7 @@ def main():
     test_csv_quant()
     test_voz_body()
     test_preset_vitor()
+    test_balao()
     print("ok all mocks")
     return 0
 
@@ -841,6 +842,44 @@ def test_voz_body():
     k=resp.find('"text"'); q=resp.find('"', resp.find(":",k)+1)
     assert json.loads(resp[q:resp.find('"',q+1)+1]) == "como tá o ouro"
     print("ok voz body")
+
+def obs_resumo(t, maxc=120):
+    # espelho do ObsResumo (auto_agente.mqh)
+    o=""
+    for l in t.split("\n"):
+        l=l.strip()
+        if not l: continue
+        u=l.upper()
+        if u.startswith("VEREDITO") or u.startswith("(OPINI") or u.startswith("AS DUAS LEITURAS") or u.startswith("SÓ UMA LEITURA"): continue
+        o+=(" " if o else "")+l
+    o=o.replace("*","").replace("  "," ")
+    if len(o)<=maxc: return o
+    corte=-1; fr=0
+    for i in range(min(maxc,len(o))):
+        if o[i] in ".!?" and (i+1>=len(o) or o[i+1]==" "):
+            corte=i+1; fr+=1
+            if fr>=2: break
+    if corte>=40: return o[:corte]
+    sp=-1
+    for i in range(min(maxc,len(o))-1,0,-1):
+        if o[i]==" ": sp=i; break
+    if sp<30: sp=maxc-1
+    return o[:sp]+"…"
+
+def test_balao():
+    a=obs_resumo("Preço varreu a mínima da Ásia e voltou 💧 Se fechar acima de 4080 o viés vira compra. Sem pressa.\nVEREDITO: ESPERAR\nAs duas leituras bateram ✅")
+    assert "VEREDITO" not in a and "leituras" not in a and len(a)<=120, a
+    b=obs_resumo("Primeira frase curta mas com conteúdo suficiente. Segunda frase também curta aqui. Terceira frase que não deve aparecer no balão de jeito nenhum.")
+    assert b.endswith("aqui.") and "Terceira" not in b, b
+    c=obs_resumo("x "*200); assert len(c)<=121 and c.endswith("…")
+    ag=_src("auto_agente.mqh"); hd=_src("auto_head.mq5"); tl=_src("auto_tail.mq5"); ch=_src("auto_chat.mqh")
+    assert re.search(r"input bool\s+InpBalaoIA\s*=\s*true", hd)
+    obs=ag[ag.index("BALÃO DA IA NO GRÁFICO"):]
+    assert "AIAsk" not in obs and "WebRequest" not in obs and "GeminiMidia" not in obs   # sem chamada extra de IA
+    assert "obs. da IA, não certeza" in obs and "clrBlack" in obs and "clrWhite" in obs and "clrGold" in obs
+    assert tl.count("ObsSet(")==3 and "ObsTimer();" in tl and "ObsApaga();" in tl and "CHARTEVENT_CHART_CHANGE" in tl
+    assert ch.count("ObsSet(")>=3 and ag.count("ObsSet(")>=4
+    print("ok balao da IA no grafico")
 
 def test_preset_vitor():
     ss=open(ROOT+"/kit/presets/ALIEN_PROFESSOR_AUTO_seguro.set").read()

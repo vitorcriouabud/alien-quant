@@ -9,6 +9,7 @@
 - /diario e /aprendizado em frases normais. Resumo da semana domingo 20:00 (Brasília) com acerto da IA, dos avisos e a sua disciplina.
 
 **Agente**
+- Balão da IA no gráfico: a última observação (análise, aviso, resposta sobre o gráfico, foto) aparece num balão preto e amarelo perto do preço, à direita, com 1 ou 2 frases e a etiqueta "obs. da IA, não certeza". Não gasta pergunta extra da IA. Desliga em InpBalaoIA.
 - Avisa sozinho: varrida de liquidez (Ásia, ontem, Londres), mudança de estrutura (CHoCH/BOS), bloco de ordens, VWAP, setup 7/7. Máximo 6 por hora, sem repetir depois de reiniciar.
 - Conversa sobre qualquer assunto, lembra das últimas mensagens e do que você conta de você (/memoria, /esquece).
 - Entende áudio 🎤 e foto 📷 (até print de gráfico de outra plataforma), usando a sua chave Gemini.
