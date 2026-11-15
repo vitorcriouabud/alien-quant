@@ -11,7 +11,7 @@ def base(z):
         z.write(P + f, R + f)
     for f in ["README_PT.md", "TESTE_SINAIS.md", "MUDANCAS.md", "COMO_ATUALIZAR.md"]:
         z.write(P + f, R + f)
-    for f in ["INSTALAR.bat", "INSTALAR.ps1", "VIGIA_INSTALAR.bat", "VIGIA_MT5.ps1"]:
+    for f in ["INSTALAR.bat", "INSTALAR.ps1", "ATUALIZAR.bat", "ATUALIZAR.ps1", "VIGIA_INSTALAR.bat", "VIGIA_MT5.ps1"]:
         z.write(P + "kit/" + f, R + f)
     for f in sorted(glob.glob(P + "kit/presets/*.set")):
         z.write(f, R + "presets/" + os.path.basename(f))
@@ -56,7 +56,7 @@ if os.path.isfile(VITOR_SET):
             "3. No Telegram use os botoes ou mande /ajuda.\r\n\r\n"
             "IMPORTANTE: use so o ALIEN_PROFESSOR_AUTO. NAO ligue o ALIEN_PROFESSOR_TELEGRAM junto (mensagens dobradas).\r\n"
             "Vem em MODO ASSISTENTE (so analisa e avisa).\r\n"
-            "Atualizar no futuro: feche o MT5 e rode o INSTALAR.bat do zip novo (sua configuracao nunca e apagada).\r\n"
+            "Atualizar no futuro: feche o MT5 e de dois cliques no ATUALIZAR.bat (baixa do GitHub). Sua configuracao nunca e apagada.\r\n"
             "Subir codigo e diarios pro GitHub: SUBIR_GITHUB.bat (branch alien-dados).\r\n"
             "No teste de 10 anos o AUTO no ouro PERDEU. Os indices (pasta indices) foram o que deu positivo.\r\n")
     out = "/workspace/ALIEN_PROFESSOR_VITOR.zip"

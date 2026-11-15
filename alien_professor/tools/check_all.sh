@@ -19,7 +19,7 @@ if [ -x "$PW" ]; then
     $PW -NoProfile -Command "\$e=\$null; [System.Management.Automation.Language.Parser]::ParseFile('$f',[ref]\$null,[ref]\$e) | Out-Null; if(\$e){exit 1}" || bad "sintaxe $f"
   done; echo "ps1 ok"
 else echo "(sem pwsh: pulei a sintaxe dos .ps1)"; fi
-for f in $P/kit/*.bat $P/kit/INSTALAR.ps1 $P/kit/SUBIR_GITHUB.ps1; do
+for f in $P/kit/*.bat $P/kit/INSTALAR.ps1 $P/kit/SUBIR_GITHUB.ps1 $P/kit/ATUALIZAR.ps1; do
   python3 -c "import sys;b=open(sys.argv[1],'rb').read();assert all(c<128 for c in b),'ascii';assert b.count(b'\n')==b.count(b'\r\n'),'crlf'" "$f" || bad "ASCII/CRLF $f"
 done
 step "segredos"
