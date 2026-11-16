@@ -3,6 +3,9 @@
 // Painel compacto (amarelo/preto/branco) + linhas e cenários no gráfico
 //====================================================================
 #define PAINEL_W 456
+// v12.6: blocos do painel e modo limpo (o Vitor liga/desliga pelo Telegram)
+bool g_modoLimpo=false;
+bool g_pnIA=true, g_pnNiv=true, g_pnConf=true, g_pnConta=true, g_pnOculto=false;
 // g_painelMin vive em core.mqh
 datetime g_aiPanelT=0;
 string   g_aiPanelPrev="";
@@ -256,6 +259,7 @@ void PainelDesenhaDash()
    int hNiv=thB+8*thS+8;
    int hBar=22+thS;
    int hDisc=thS+thB+8;
+   if(!g_pnIA) hAi=-6; if(!g_pnNiv) hNiv=0; if(!g_pnConf) hBar=0; if(!g_pnConta) hDisc=0;
    int H=8+thB+6+hAi+hHead+hMtf+hNiv+hBar+hDisc+10;
    if(g_cv.Width()!=W || g_cv.Height()!=H) g_cv.Resize(W,H);
    g_cv.Erase(ColorToARGB(clrBlack,230));
@@ -266,6 +270,7 @@ void PainelDesenhaDash()
    g_cv.TextOut(pad,y,"ALIEN PROFESSOR",ColorToARGB(clrGold,255));
    y+=thB+6;
 
+   if(g_pnIA){
    // caixa da IA
    int boxY=y, boxH=hAi;
    g_cv.FillRectangle(6,boxY,W-7,boxY+boxH-1,ColorToARGB(C'18,16,0',240));
@@ -293,6 +298,7 @@ void PainelDesenhaDash()
       g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(SrvParaBR(g_aiPanelT),TIME_MINUTES)+" (Brasília)",ColorToARGB(clrSilver,255));
    }
    y=boxY+boxH+6;
+   }
 
    // cabeçalho compacto
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID), ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
@@ -329,6 +335,7 @@ void PainelDesenhaDash()
    }
    y+=thB+6;
 
+   if(g_pnNiv){
    // níveis
    PainelFonte(f-1,true);
    g_cv.TextOut(pad,y,"Níveis (distância em pontos)",ColorToARGB(clrGold,255));
@@ -351,7 +358,9 @@ void PainelDesenhaDash()
       y+=thS;
    }
    y+=4;
+   }
 
+   if(g_pnConf){
    // barra de confluência
    PainelFonte(f-1,true);
    int cb=g_efBuy, cs=g_efSell; if(cb<0) cb=0; if(cs<0) cs=0;
@@ -368,7 +377,9 @@ void PainelDesenhaDash()
    }
    g_cv.Rectangle(barX,y,barX+barW,y+barH,ColorToARGB(clrGold,255));
    y+=barH+8;
+   }
 
+   if(g_pnConta){
    // disciplina
    PainelFonte(f-1,true);
    g_cv.TextOut(pad,y,"Hoje na conta",ColorToARGB(clrGold,255));
@@ -379,6 +390,7 @@ void PainelDesenhaDash()
    g_cv.TextOut(pad,y,disc,ColorToARGB(clrWhite,255));
    y+=thS;
    if(g_pare!="") { PainelFonte(f-1,true); g_cv.TextOut(pad,y,g_pare,ColorToARGB(clrGold,255)); }
+   }
    g_cv.Update(true);
 }
 
@@ -387,6 +399,8 @@ void PainelMontaEDesenha()
    if(g_noDraw) return;
    EngBotoes();
    if(!g_cvOk) return;
+   ObjectSetInteger(0,PFX+"PAINEL",OBJPROP_TIMEFRAMES,g_pnOculto?OBJ_NO_PERIODS:OBJ_ALL_PERIODS);
+   if(g_pnOculto) return;
    if(g_painelMin){ PainelDesenhaMini(); return; }
    if(g_engPag>0)
    {
@@ -490,4 +504,92 @@ void DrawCenarios()
    if(PlanoValido(main)) DrawCenarioLado(main,true,t0);
    Plano outr=(main.dir==1?g_ps:g_pb);
    if(PlanoValido(outr) && !(PlanoValido(main) && outr.dir==main.dir)) DrawCenarioLado(outr,false,t0);
+}
+
+//====================================================================
+// v12.6: gráfico limpo. Textos que caem um em cima do outro são afastados
+// (sobe/desce alguns pixels) ou escondidos; "modo limpo" mostra só o essencial.
+// Painel: blocos que o Vitor pode esconder pelo Telegram.
+//====================================================================
+string g_rotNome[]; double g_rotOrig[]; double g_rotMov[];
+// objetos que o modo limpo esconde (os níveis-chave, o plano e as suas linhas ficam)
+bool RotuloSoDetalhe(string n)
+{
+   string pf[]={"NV","SWP","BOS","FVG","FH1","FM15","OBL","VOL","SIG","CEN1"};
+   for(int i=0;i<ArraySize(pf);i++) if(StringFind(n,PFX+pf[i])==0) return true;
+   return false;
+}
+// prioridade: maior fica no lugar, menor é que se mexe
+int RotuloPrioridade(string n)
+{
+   if(StringFind(n,PFX+"USR")==0) return 6;
+   if(StringFind(n,PFX+"PL")==0) return 5;
+   if(StringFind(n,PFX+"CEN0")==0) return 4;
+   if(StringFind(n,PFX+"SWP")==0) return 3;
+   if(StringFind(n,PFX+"BOS")==0) return 2;
+   return 1;
+}
+double RotuloOrigem(string n,double cur)
+{
+   for(int i=0;i<ArraySize(g_rotNome);i++) if(g_rotNome[i]==n){ if(MathAbs(g_rotMov[i]-cur)<_Point*0.5) return g_rotOrig[i]; return cur; }
+   return cur;
+}
+void RotuloGuarda(string n,double orig,double mov)
+{
+   for(int i=0;i<ArraySize(g_rotNome);i++) if(g_rotNome[i]==n){ g_rotOrig[i]=orig; g_rotMov[i]=mov; return; }
+   int k=ArraySize(g_rotNome); ArrayResize(g_rotNome,k+1); ArrayResize(g_rotOrig,k+1); ArrayResize(g_rotMov,k+1);
+   g_rotNome[k]=n; g_rotOrig[k]=orig; g_rotMov[k]=mov;
+}
+bool RotuloBate(int x,int y,int w,int h,const int &bx[],const int &by[],const int &bw[],const int &bh[],int nb)
+{
+   for(int i=0;i<nb;i++) if(x<bx[i]+bw[i] && bx[i]<x+w && y<by[i]+bh[i] && by[i]<y+h) return true;
+   return false;
+}
+void RotulosArruma()
+{
+   if(g_noDraw) return;
+   int tot=ObjectsTotal(0,0,-1);
+   string nm[]; int pr[]; ArrayResize(nm,0); ArrayResize(pr,0);
+   for(int i=0;i<tot;i++)
+   {
+      string n=ObjectName(0,i,0,-1); if(StringFind(n,PFX)!=0) continue;
+      bool det=RotuloSoDetalhe(n);
+      ObjectSetInteger(0,n,OBJPROP_TIMEFRAMES,(g_modoLimpo && det)?OBJ_NO_PERIODS:OBJ_ALL_PERIODS);
+      if(g_modoLimpo && det) continue;
+      if(ObjectGetInteger(0,n,OBJPROP_TYPE)!=OBJ_TEXT) continue;
+      int k=ArraySize(nm); ArrayResize(nm,k+1); ArrayResize(pr,k+1); nm[k]=n; pr[k]=RotuloPrioridade(n);
+   }
+   if(!InpArrumarRotulos) return;
+   int n=ArraySize(nm); if(n==0) return;
+   // ordena por prioridade (maior primeiro)
+   for(int a=0;a<n-1;a++) for(int b=a+1;b<n;b++) if(pr[b]>pr[a]){ int tp=pr[a]; pr[a]=pr[b]; pr[b]=tp; string tn=nm[a]; nm[a]=nm[b]; nm[b]=tn; }
+   int bx[],by[],bw[],bh[]; ArrayResize(bx,n); ArrayResize(by,n); ArrayResize(bw,n); ArrayResize(bh,n); int nb=0;
+   int off[]={0,-14,14,-28,28};
+   for(int i=0;i<n;i++)
+   {
+      string o=nm[i];
+      datetime t=(datetime)ObjectGetInteger(0,o,OBJPROP_TIME,0);
+      double cur=ObjectGetDouble(0,o,OBJPROP_PRICE,0);
+      double orig=RotuloOrigem(o,cur);
+      int x,y; if(!ChartTimePriceToXY(0,0,t,orig,x,y)){ continue; }
+      int sz=(int)ObjectGetInteger(0,o,OBJPROP_FONTSIZE); if(sz<=0) sz=8;
+      int w=(int)(StringLen(ObjectGetString(0,o,OBJPROP_TEXT))*sz*0.62)+6, h=sz+6;
+      long an=ObjectGetInteger(0,o,OBJPROP_ANCHOR);
+      if(an==ANCHOR_RIGHT_LOWER || an==ANCHOR_RIGHT_UPPER || an==ANCHOR_RIGHT) x-=w;
+      if(an==ANCHOR_LOWER || an==ANCHOR_UPPER || an==ANCHOR_CENTER) x-=w/2;
+      if(an==ANCHOR_LEFT_LOWER || an==ANCHOR_RIGHT_LOWER || an==ANCHOR_LOWER) y-=h;
+      int achou=-1;
+      for(int q=0;q<ArraySize(off);q++) if(!RotuloBate(x,y+off[q],w,h,bx,by,bw,bh,nb)){ achou=q; break; }
+      if(achou<0){ ObjectSetInteger(0,o,OBJPROP_TIMEFRAMES,OBJ_NO_PERIODS); RotuloGuarda(o,orig,cur); continue; }
+      double novo=orig;
+      if(off[achou]!=0)
+      {
+         int sub=0; datetime t2; double p2;
+         int yAnc=y+off[achou]+((an==ANCHOR_LEFT_LOWER || an==ANCHOR_RIGHT_LOWER || an==ANCHOR_LOWER)?h:0);
+         if(ChartXYToTimePrice(0,x>0?x:1,yAnc,sub,t2,p2) && p2>0) novo=p2;
+      }
+      ObjectSetDouble(0,o,OBJPROP_PRICE,0,novo);
+      RotuloGuarda(o,orig,novo);
+      bx[nb]=x; by[nb]=y+off[achou]; bw[nb]=w; bh[nb]=h; nb++;
+   }
 }

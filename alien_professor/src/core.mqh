@@ -68,6 +68,7 @@ input bool   InpLinhasChave       = true;        // Linhas dos níveis principai
 input bool   InpMarcasGrafico     = true;        // Varridas, mudanças e vazios no gráfico
 input int    InpMaxMarcas         = 8;           // Quantas marcas recentes (leve)
 input bool   InpCenariosGrafico   = true;        // Setas do cenário projetado (não é certeza)
+input bool   InpArrumarRotulos    = true;        // Afastar/esconder textos que ficam um em cima do outro no gráfico
 
 #define PFX "APROF_"
 bool   g_noDraw=false;          // tester sem visual: não desenha nada (mais rápido)
@@ -904,7 +905,7 @@ void Core_Update(bool forcePanel=false)
       if(refresh){ g_fvgH1Bar=0; g_fvgM15Bar=0; ArrayInitialize(g_mtfBar,0); }
       g_lastBar=bt; g_ready=true; lastFull=GetTickCount64();
       EngCalc();
-      if(!g_noDraw){ DrawNiveis(); DrawEstrutura(); DrawLinhasChave(); EngDrawBlocos(); DrawCenarios(); }
+      if(!g_noDraw){ DrawNiveis(); DrawEstrutura(); DrawLinhasChave(); EngDrawBlocos(); DrawCenarios(); RotulosArruma(); }
    }
    else
    {
@@ -920,7 +921,7 @@ void Core_Update(bool forcePanel=false)
    string sTxt; int sN=SessaoNota(now,sTxt);
    CalcPlano(1,g_pb,sN); CalcPlano(-1,g_ps,sN);
    Plano b=MelhorPlano();
-   if(!g_noDraw){ DrawPlano(b); if(newBar||refresh){ DrawLinhasChave(); DrawCenarios(); } Painel(); }
+   if(!g_noDraw){ DrawPlano(b); if(newBar||refresh){ DrawLinhasChave(); DrawCenarios(); RotulosArruma(); } Painel(); }
    // alerta (uma vez por barra)
    static int prevOk=0; // 0 = abaixo; +1/-1 = já avisou nessa direção
    bool okNow=(PlanoValido(b) && b.score>=InpScoreAlerta && g_pare=="" && NoticiaAviso(now)=="");

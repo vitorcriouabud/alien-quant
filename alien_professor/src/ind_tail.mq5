@@ -21,5 +21,6 @@ int OnCalculate(const int rates_total,const int prev_calculated,const datetime &
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam)
 {
    EngChartEvent(id,sparam);
+   if(id==CHARTEVENT_CHART_CHANGE){ static uint ult=0; uint ms=GetTickCount(); if(ms-ult>300){ ult=ms; RotulosArruma(); ChartRedraw(0); } }
 }
 //+------------------------------------------------------------------+
