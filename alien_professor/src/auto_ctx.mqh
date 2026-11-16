@@ -232,4 +232,11 @@ string RegraContextoIA(bool abertura)
    return r;
 }
 // linha curta pros sinais automáticos (AIAsk)
-string AgoraCurtoIA(){ return "AGORA: "+DiaHoraBR(AgoraBR(),true)+" (Brasília). "+(MercadoFechado()?"Mercado FECHADO.":"Mercado aberto.")+"\n"; }
+string AgoraCurtoIA()
+{
+   string pq,oq; string a=DecideAgora(pq,oq);
+   return "AGORA: "+DiaHoraBR(AgoraBR(),true)+" (Brasília). "+(MercadoFechado()?"Mercado FECHADO.":"Mercado aberto.")+"\n"
+         +"DECISAO_DO_ROBO (regra rígida, nota mínima "+IntegerToString(NotaForte())+"): "+a+". Por quê: "+pq+" O que fazer: "+oq+"\n"
+         +"COMO RESPONDER: o Vitor é leigo. Fale curto, gíria leve, sem sigla (diga vazio de preço, rompimento, mudança de direção, gráfico de 1 hora). "
+         +"Comece com o que fazer agora (COMPRAR/VENDER/ESPERAR/FICAR FORA) igual à DECISAO_DO_ROBO; nunca chame entrada que a decisão não chamou. Se der preço de stop/alvo, use só os números do contexto.\n";
+}

@@ -44,8 +44,8 @@ bool SendJsonMsg(string chat,string text,string markup)
    ArrayResize(data,n);
    for(int i=0;i<n;i++) data[i]=(char)utf8[i];
    ResetLastError();
-   int code=WebRequest("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendMessage","Content-Type: application/json\r\n",8000,data,res,rh);
-   if(code==-1){ Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),")"); return false; }
+   int code=HttpReq("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendMessage","Content-Type: application/json\r\n",8000,data,res,rh);
+   if(code==-1){ NetFalhaAviso(); return false; }
    if(code!=200) Print("Telegram respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
@@ -58,7 +58,7 @@ void TgAckCb(string qid)
    string url="https://api.telegram.org/bot"+g_cfgTgToken+"/answerCallbackQuery";
    string body="callback_query_id="+UrlEnc(qid);
    char data[],res[]; string rh; StringToCharArray(body,data,0,StringLen(body));
-   WebRequest("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",5000,data,res,rh);
+   HttpReq("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",5000,data,res,rh);
 }
 
 string PlanoLadoTxt(const Plano &p,string lado)
@@ -432,7 +432,7 @@ string AprendizadoTxt(int dias=0)
 void WeeklySummary()
 {
    if(MQLInfoInteger(MQL_TESTER) || !TgOk()) return;
-   if(InpTgChat && !g_tgMaster) return;
+   if(TgChatOn() && !g_tgMaster) return;
    datetime br=AgoraBR(); MqlDateTime d; TimeToStruct(br,d);
    if(d.day_of_week!=0 || d.hour<20) return;               // domingo 20:00 (Brasília)
    string key="SEM"+TimeToString(br,TIME_DATE);

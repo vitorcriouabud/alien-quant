@@ -80,7 +80,7 @@ string AcaoExecuta(string nome,string params)
       return g_modoLimpo?"🧹 Modo limpo ligado: deixei só os níveis principais, o plano e as suas linhas.":"Modo limpo desligado: voltei todas as marcas."; }
    if(nome=="painel") return PainelBloco(AcaoP(params,0),AcaoP(params,1));
    if(nome=="balao"){ string a=Baixo(AcaoP(params,0)); bool on=!(a=="off"||a=="nao"||a=="desliga"||a=="0"); if(!on){ g_obsTxt=""; ObsApaga(); } return on?"O balão volta na próxima observação da IA.":"Tirei o balão da IA do gráfico."; }
-   if(nome=="nota_alerta"){ int v=(int)NumDe(AcaoP(params,0)); if(v<0||v>10) return "A nota vai de 0 a 10."; g_notaAlerta=v; PrefSalva(); return v==0?"Voltei a nota dos avisos pro padrão ("+IntegerToString(InpScoreTrade)+").":StringFormat("Beleza: só te aviso de setup com nota %d ou mais.",v); }
+   if(nome=="nota_alerta"){ int v=(int)NumDe(AcaoP(params,0)); if(v<0||v>10) return "A nota vai de 0 a 10."; g_notaAlerta=v; PrefSalva(); return v==0?"Voltei a nota dos avisos pro padrão ("+IntegerToString(MathMax(InpScoreTrade,NotaForte()))+").":StringFormat("Beleza: só te aviso de setup com nota %d ou mais.",v); }
    if(nome=="mudo" || nome=="som") return MudoMuda(AcaoP(params,0),nome=="mudo");
    if(nome=="pausa"){ PedeConfirmaPausa(true); return ""; }
    if(nome=="retoma"){ PedeConfirmaPausa(false); return ""; }
@@ -160,7 +160,7 @@ string MudoMuda(string tipo,bool mudo)
    PrefSalva();
    return mudo?"🔕 Silenciei os avisos de "+t+".":"🔔 Voltei os avisos de "+t+".";
 }
-int NotaAlertaMin(){ return g_notaAlerta>0?g_notaAlerta:InpScoreTrade; }
+int NotaAlertaMin(){ return g_notaAlerta>0?g_notaAlerta:MathMax(InpScoreTrade,NotaForte()); }   // v12.7: padrão 9 (você muda com /nota)
 // ---------------- alertas: remover + linha no gráfico ----------------
 int AlertaRemove(double preco)
 {
@@ -242,7 +242,7 @@ string LembreteAdd(string hhmm,string txt)
 string LembretesTxt(){ string l[]; int n=StringSplit(ArqLe(g_lembArq),'\n',l); string s=""; for(int i=0;i<n;i++){ string p[]; if(StringSplit(l[i],';',p)<2) continue; s+="⏰ "+DiaHoraBR((datetime)StringToInteger(p[0]),false,true)+" - "+p[1]+"\n"; } return s==""?"Nenhum lembrete marcado.":s; }
 void LembretesTimer()
 {
-   if(!TgOk() || (InpTgChat && !g_tgMaster)) return;
+   if(!TgOk() || (TgChatOn() && !g_tgMaster)) return;
    string s=ArqLe(g_lembArq); if(s=="") return;
    string l[]; int n=StringSplit(s,'\n',l); string o=""; datetime br=AgoraBR(); bool mudou=false;
    for(int i=0;i<n;i++)
@@ -423,7 +423,7 @@ void TradeCtxGrava(ulong deal)
       sym,tp==DEAL_TYPE_BUY?"compra":"venda",vol,FmtS(sym,px),aqui?g_pb.score:-1,aqui?g_ps.score:-1,aqui?(b.dir==1?"compra":"venda"):"-",CsvLimpo(st),CsvLimpo(aqui?g_engKZ:""),
       g_mtf[0],g_mtf[1],g_mtf[2],g_mtf[3],g_mtf[4],g_mtf[5],FmtS(sym,spr),aqui&&PlanoValido(b)?(b.dir==1?"compra":"venda"):"-",aqui&&PlanoValido(b)?Fmt(b.entry):"-",aqui&&PlanoValido(b)?Fmt(b.stop):"-",aqui&&PlanoValido(b)?Fmt(b.target):"-",CsvLimpo(g_pare),org));
    string rq=RegraQuebrada(vol);
-   if(rq!="" && TgOk() && (!InpTgChat || TgMaster())) SendMsg("⚠️ Opa, você abriu "+(tp==DEAL_TYPE_BUY?"compra":"venda")+" de "+sym+", mas tem uma regra sua: "+rq+". Tá seguindo o plano? Se for o caso, fecha com calma.");
+   if(rq!="" && TgOk() && (!TgChatOn() || TgMaster())) SendMsg("⚠️ Opa, você abriu "+(tp==DEAL_TYPE_BUY?"compra":"venda")+" de "+sym+", mas tem uma regra sua: "+rq+". Tá seguindo o plano? Se for o caso, fecha com calma.");
 }
 struct TradeLin { long pos; string sym; int dir; double vol; datetime t0; double p0; double sl; double tp; datetime t1; double p1; double net; string saida; bool aberta; };
 string SaidaTxt(long reason)
@@ -538,6 +538,13 @@ bool EhPedidoExplica(string t)
    string k[]={"explica o grafico","me explica o grafico","explique o grafico","o que e essa linha","o que sao essas linhas","que linha e essa","nao entendo as linha","nao to entendendo as linha","nao entendo o grafico","o que significa essa","o que e essa caixa","o que sao essas caixas","explica as linhas","explica essas linhas","o que e cada linha"};
    return TemAlgum(u,k);
 }
+bool EhPedidoAgora(string t)
+{
+   string u=Baixo(t);
+   if(u=="agora" || u=="agora?" || u=="e agora" || u=="e agora?" || u=="e ai" || u=="e ai?") return true;
+   string k[]={"e agora","oq eu faco","o que eu faco","que que eu faco","compro ou vendo","compra ou vende","compra ou venda","devo comprar","devo vender","entro ou nao","entro agora","da pra entrar","posso entrar","to perdido","nao to entendendo nada","nao entendo nada","o que ta acontecendo","oq ta acontecendo","que ta acontecendo","me ajuda com o mercado","como ta o mercado","como ta o ouro"};
+   return TemAlgum(u,k);
+}
 bool EhPedidoTrades(string t)
 {
    string u=Baixo(t);
@@ -553,6 +560,7 @@ bool EhPedidoPodes(string t)
 // ================= comandos novos (chamado pelo TgHandle) =================
 bool AcoesCmd(string cmd,string args)
 {
+   if(cmd=="/agora"){ SendMsg(AgoraTexto()); return true; }
    if(cmd=="/explica"){ ExplicaEnvia(); return true; }
    if(cmd=="/aula"){ SendMsg(AulaTxt(args)); return true; }
    if(cmd=="/guia"){ SendMsg(GuiaTxt()); return true; }

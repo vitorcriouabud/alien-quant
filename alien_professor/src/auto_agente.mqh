@@ -124,7 +124,7 @@ void ParadaInit()
    string s=ArqLe(ParadaArq());
    ParadaGrava(1,-1);
    if(!TgOk()) return;
-   if(InpTgChat && !TgMaster()) return;      // só o gráfico que atende o chat avisa
+   if(TgChatOn() && !TgMaster()) return;      // só o gráfico que atende o chat avisa
    string versao="Alier versão "+APROF_VER+", ligado às "+g_ligadoBR+" (Brasília) no "+_Symbol+".";
    if(s=="")
    {
@@ -146,7 +146,7 @@ void ParadaInit()
 // ---------------- 5. teclado fixo + confirmação de pausa ----------------
 string TgKbFixo()
 {
-   return "{\"keyboard\":[[{\"text\":\"📰 Notícias\"},{\"text\":\"📊 Análise\"},{\"text\":\"🧭 Plano\"}],"
+   return "{\"keyboard\":[[{\"text\":\"⚡ E agora?\"}],[{\"text\":\"📰 Notícias\"},{\"text\":\"📊 Análise\"},{\"text\":\"🧭 Plano\"}],"
           "[{\"text\":\"🗓️ Agenda\"},{\"text\":\"📸 Foto\"},{\"text\":\"ℹ️ Status\"}],[{\"text\":\"🎓 Explica\"},{\"text\":\"📒 Trades\"},{\"text\":\"🔔 Alertas\"}],[{\"text\":\"⏸️ Pausa\"},{\"text\":\"▶️ Retoma\"}]],"
           "\"resize_keyboard\":true,\"is_persistent\":true}";
 }
@@ -161,6 +161,7 @@ string BotaoCmd(string t)
    string u=AISemAcento(t); StringToUpper(u);
    string o="";
    for(int i=0;i<StringLen(u);i++){ ushort c=StringGetCharacter(u,i); if(c>='A' && c<='Z') o+=ShortToString(c); }
+   if(o=="EAGORA"||o=="AGORA") return "/agora";
    if(o=="NOTICIAS") return "/noticias";
    if(o=="ANALISE")  return "/analise";
    if(o=="PLANO")    return "/plano";
@@ -234,7 +235,7 @@ void MemoriaApaga(){ if(!g_tgEmGrupo) ArqGrava(g_fatosArq,""); ArqGrava(MemArq()
 bool BaixaUrl(string url,uchar &out[],int timeout=15000)
 {
    char data[],res[]; string rh; ResetLastError();
-   int code=WebRequest("GET",url,"",timeout,data,res,rh);
+   int code=HttpReq("GET",url,"",timeout,data,res,rh);
    if(code!=200) { Print("Áudio: download respondeu ",code," (erro ",GetLastError(),")"); return false; }
    int n=ArraySize(res); ArrayResize(out,n); for(int i=0;i<n;i++) out[i]=(uchar)res[i];
    return n>0;
@@ -266,12 +267,12 @@ string GeminiMidia(uchar &bin[],string mime,string pedido,int maxTok,double temp
       string url="https://generativelanguage.googleapis.com/v1beta/models/"+InpAI2Model+":generateContent";
       if(k==1){ if(StringLen(g_cfgGem2)>10 && key!=g_cfgGem2) hdr="Content-Type: application/json\r\nx-goog-api-key: "+g_cfgGem2+"\r\n"; else Sleep(3000); }
       ArrayResize(res,0); ResetLastError();
-      code=WebRequest("POST",url,hdr,40000,data,res,rh);
+      code=HttpReq("POST",url,hdr,40000,data,res,rh);
       r=CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8);
       if(code!=429 && code!=500 && code!=503) break;
       Print("Gemini mídia ocupada (",code,") - tentando de novo");
    }
-   if(code==-1){ erro="WebRequest bloqueado ("+IntegerToString(GetLastError())+")"; return ""; }
+   if(code==-1){ erro="sem conexão"; return ""; }
    if(code==429){ erro="limite grátis do Google"; return ""; }
    if(code!=200){ erro="Gemini respondeu "+IntegerToString(code); Print("Gemini mídia: ",erro,": ",StringSubstr(r,0,300)); return ""; }
    string t=GeminiTexto(r); StringReplace(t,"**","");
@@ -418,7 +419,7 @@ void ProEnvia(string tipo,string key,int dir,double preco,string msg)
 void ProativoBar()
 {
    if(!InpAlertasProativos) return;
-   if(!MQLInfoInteger(MQL_TESTER) && TgOk() && InpTgChat && !g_tgMaster) return;   // só um gráfico avisa
+   if(!MQLInfoInteger(MQL_TESTER) && TgOk() && TgChatOn() && !g_tgMaster) return;   // só um gráfico avisa
    datetime m1=iTime(_Symbol,PERIOD_M1,0); if(m1==0 || m1==g_proBarM1) return;
    g_proBarM1=m1;
    if(!g_ready) return;
@@ -544,7 +545,7 @@ void DisciplinaFechou(ulong deal)
    if(en!=DEAL_ENTRY_OUT && en!=DEAL_ENTRY_OUT_BY) return;
    long pos=HistoryDealGetInteger(deal,DEAL_POSITION_ID);
    if(PositionSelectByTicket((ulong)pos)) return;                // fechou só uma parte: espera fechar tudo
-   if(TgOk() && InpTgChat && !TgMaster()) return;                 // só um gráfico pergunta
+   if(TgOk() && TgChatOn() && !TgMaster()) return;                 // só um gráfico pergunta
    if(DiscTem(pos)) return;
    string sym=HistoryDealGetString(deal,DEAL_SYMBOL);
    long tipo=HistoryDealGetInteger(deal,DEAL_TYPE);
@@ -650,7 +651,7 @@ string AgendaTxt()
 }
 void BomDia()
 {
-   if(!TgOk() || (InpTgChat && !g_tgMaster)) return;
+   if(!TgOk() || (TgChatOn() && !g_tgMaster)) return;
    datetime br=AgoraBR(); MqlDateTime d; TimeToStruct(br,d);
    if(d.day_of_week==0 || d.day_of_week==6) return;
    if(d.hour!=8 || d.min>30) return;                         // ~08:00 de Brasília, dias úteis
@@ -664,7 +665,7 @@ void BomDia()
 string CalNum(double v){ return DoubleToString(v,(MathAbs(v)<10?2:1)); }
 void NoticiaResultado()
 {
-   if(!TgOk() || !CalOn() || (InpTgChat && !g_tgMaster)) return;
+   if(!TgOk() || !CalOn() || (TgChatOn() && !g_tgMaster)) return;
    LoadNews(); datetime now=TimeTradeServer();
    for(int i=0;i<ArraySize(g_news);i++)
    {
