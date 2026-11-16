@@ -215,7 +215,8 @@ void PainelDesenhaMini()
    g_cv.Rectangle(0,0,W-1,H-1,ColorToARGB(clrGold,255));
    g_cv.Rectangle(1,1,W-2,H-2,ColorToARGB(clrGold,255));
    PainelFonte(InpFonte,true);
-   g_cv.TextOut(10,8,"ALIEN  "+_Symbol,ColorToARGB(clrGold,255));
+   string mpq,moq; string ma=DecideAgora(mpq,moq);
+   g_cv.TextOut(10,8,"ALIEN  "+_Symbol+"   AGORA: "+ma,ColorToARGB(clrGold,255));
    if(ver!="")
    {
       color cv=CorVeredito(ver);
@@ -260,7 +261,15 @@ void PainelDesenhaDash()
    int hBar=22+thS;
    int hDisc=thS+thB+8;
    if(!g_pnIA) hAi=-6; if(!g_pnNiv) hNiv=0; if(!g_pnConf) hBar=0; if(!g_pnConta) hDisc=0;
-   int H=8+thB+6+hAi+hHead+hMtf+hNiv+hBar+hDisc+10;
+   // v12.7: caixa "AGORA" no topo: o que fazer, por quê, stop e alvo (português simples)
+   string agPq="", agOq=""; string agA=DecideAgora(agPq,agOq);
+   string agL1[], agL2[];
+   PainelQuebra("Por quê: "+agPq,W-28,f,false,agL1);
+   PainelQuebra(agOq,W-28,f,true,agL2);
+   int nA1=MathMin(3,ArraySize(agL1)), nA2=MathMin(3,ArraySize(agL2));
+   int thG=PainelTexH(f+8,true);
+   int hAg=8+thG+6+nA1*(th+1)+4+nA2*(thB+1)+8;
+   int H=8+thB+6+hAg+6+hAi+hHead+hMtf+hNiv+hBar+hDisc+10;
    if(g_cv.Width()!=W || g_cv.Height()!=H) g_cv.Resize(W,H);
    g_cv.Erase(ColorToARGB(clrBlack,230));
    g_cv.Rectangle(0,0,W-1,H-1,ColorToARGB(clrGold,255));
@@ -269,6 +278,21 @@ void PainelDesenhaDash()
    PainelFonte(f+1,true);
    g_cv.TextOut(pad,y,"ALIEN PROFESSOR",ColorToARGB(clrGold,255));
    y+=thB+6;
+   {
+      // amarelo/preto/branco: COMPRAR = caixa amarela, VENDER = caixa branca, ESPERAR/FICAR FORA = preta
+      bool cheia=(agA=="COMPRAR"||agA=="VENDER");
+      color bg=(agA=="COMPRAR"?clrGold:(agA=="VENDER"?clrWhite:C'10,10,10'));
+      color fg=(cheia?clrBlack:(agA=="ESPERAR"?clrGold:clrWhite));
+      g_cv.FillRectangle(6,y,W-7,y+hAg-1,ColorToARGB(bg,245));
+      g_cv.Rectangle(6,y,W-7,y+hAg-1,ColorToARGB(clrGold,255)); g_cv.Rectangle(7,y+1,W-8,y+hAg-2,ColorToARGB(clrGold,255));
+      int ay=y+6;
+      PainelFonte(f+8,true); g_cv.TextOut(pad,ay,"AGORA: "+agA,ColorToARGB(fg,255)); ay+=thG+6;
+      color c2=(cheia?clrBlack:clrWhite);
+      PainelFonte(f,false); for(int k=0;k<nA1;k++){ g_cv.TextOut(pad,ay,agL1[k],ColorToARGB(c2,255)); ay+=th+1; }
+      ay+=4;
+      PainelFonte(f,true); for(int k=0;k<nA2;k++){ g_cv.TextOut(pad,ay,agL2[k],ColorToARGB(cheia?clrBlack:clrGold,255)); ay+=thB+1; }
+      y+=hAg+6;
+   }
 
    if(g_pnIA){
    // caixa da IA

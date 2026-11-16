@@ -51,6 +51,7 @@ input double InpFVGMinATR         = 0.10;        // Tamanho mínimo do FVG (x AT
 input int    InpScoreVerde        = 7;           // Nota mínima p/ VERDE
 input int    InpScoreAmarelo      = 4;           // Nota mínima p/ AMARELO
 input int    InpScoreAlerta       = 7;           // Alerta quando a nota chegar em
+input int    InpNotaForte         = 9;           // v12.7: nota mínima pra dizer COMPRAR/VENDER (menos chamadas, mais claras)
 input bool   InpAlerta            = true;        // Alerta na tela
 input bool   InpPush              = false;       // Notificação no celular (push)
 
@@ -378,9 +379,9 @@ void CalcMTF()
    for(int i=0;i<6;i++){ datetime t=iTime(_Symbol,g_mtfTF[i],0); if(t!=0 && t!=g_mtfBar[i]){ g_mtf[i]=TrendTF(g_mtfTF[i]); g_mtfBar[i]=t; } }
    MqlRates r[]; ArraySetAsSeries(r,true);
    datetime t1=iTime(_Symbol,PERIOD_H1,0);
-   if(InpFVG_H1 && t1!=0 && t1!=g_fvgH1Bar && CopyRates(_Symbol,PERIOD_H1,0,300,r)>50){ ScanFVG(r,PERIOD_H1,200,g_fvgH1); g_fvgH1Bar=t1; DrawFVGHTF(g_fvgH1,"FH1","Vazio de preço",C'0,55,95',C'95,0,75'); }
+   if(InpFVG_H1 && t1!=0 && t1!=g_fvgH1Bar && CopyRates(_Symbol,PERIOD_H1,0,300,r)>50){ ScanFVG(r,PERIOD_H1,200,g_fvgH1); g_fvgH1Bar=t1; DrawFVGHTF(g_fvgH1,"FH1","Vazio de preço (gráfico de 1 hora)",C'0,55,95',C'95,0,75'); }
    datetime t2=iTime(_Symbol,PERIOD_M15,0);
-   if(InpFVG_M15 && t2!=0 && t2!=g_fvgM15Bar && CopyRates(_Symbol,PERIOD_M15,0,300,r)>50){ ScanFVG(r,PERIOD_M15,200,g_fvgM15); g_fvgM15Bar=t2; DrawFVGHTF(g_fvgM15,"FM15","Vazio de preço",C'0,80,90',C'110,50,0'); }
+   if(InpFVG_M15 && t2!=0 && t2!=g_fvgM15Bar && CopyRates(_Symbol,PERIOD_M15,0,300,r)>50){ ScanFVG(r,PERIOD_M15,200,g_fvgM15); g_fvgM15Bar=t2; DrawFVGHTF(g_fvgM15,"FM15","Vazio de preço (gráfico de 15 minutos)",C'0,80,90',C'110,50,0'); }
 }
 void DrawFVGHTF(const FVGz &f[],string pf,string lbl,color cUp,color cDn)
 {
@@ -404,8 +405,8 @@ void DrawFVGHTF(const FVGz &f[],string pf,string lbl,color cUp,color cDn)
 // preco dentro de algum FVG H1/M15 a favor?
 string InHTFFVG(int dir,double px)
 {
-   for(int m=0;m<ArraySize(g_fvgH1);m++) if(!g_fvgH1[m].filled && g_fvgH1[m].dir==dir && px<=g_fvgH1[m].top && px>=g_fvgH1[m].bot) return "vazio de preço no H1";
-   for(int m=0;m<ArraySize(g_fvgM15);m++) if(!g_fvgM15[m].filled && g_fvgM15[m].dir==dir && px<=g_fvgM15[m].top && px>=g_fvgM15[m].bot) return "vazio de preço no M15";
+   for(int m=0;m<ArraySize(g_fvgH1);m++) if(!g_fvgH1[m].filled && g_fvgH1[m].dir==dir && px<=g_fvgH1[m].top && px>=g_fvgH1[m].bot) return "vazio de preço do gráfico de 1 hora";
+   for(int m=0;m<ArraySize(g_fvgM15);m++) if(!g_fvgM15[m].filled && g_fvgM15[m].dir==dir && px<=g_fvgM15[m].top && px>=g_fvgM15[m].bot) return "vazio de preço do gráfico de 15 minutos";
    return "";
 }
 //--------------------------------------------------------------------
@@ -704,7 +705,7 @@ void CalcPlano(int dir,Plano &p,int sessN)
    // plano
    double atr=g_atr, buf=InpBufferATR*atr+spread;
    if(fi>=0){ p.entry=(g_fvg[fi].top+g_fvg[fi].bot)/2; p.entNome="meio do vazio de preço"; }
-   else     { p.entry= dir==1?ask:bid; p.entNome="preço atual (sem FVG)"; }
+   else     { p.entry= dir==1?ask:bid; p.entNome="preço atual (sem vazio de preço)"; }
    // stop: além da varrida (se houver) senão além do swing mais próximo do lado de proteção
    double base=0; int n=ArraySize(g_r);
    if(sweepExt>0 && ((dir==1 && sweepExt<p.entry) || (dir==-1 && sweepExt>p.entry))) base=sweepExt;
@@ -760,8 +761,8 @@ void DrawPlano(const Plano &p)
    datetime t1=g_r[0].time, t2=t1+PeriodSeconds(InpTFExec)*20;
    string d=p.dir==1?"COMPRA":"VENDA";
    ObjLine("PLe",t1,p.entry,t2,clrGold,STYLE_DASH,2,"Entrada "+d+" "+Fmt(p.entry)+" ("+p.entNome+")",clrGold);
-   ObjLine("PLs",t1,p.stop,t2,clrRed,STYLE_SOLID,2,StringFormat("STOP %s  (-$%.2f)",Fmt(p.stop),p.riskUSD),clrRed);
-   if(p.target>0) ObjLine("PLt",t1,p.target,t2,clrLime,STYLE_SOLID,2,StringFormat("ALVO %s  (+$%.2f)  R:R %.1f",Fmt(p.target),p.targetUSD,p.rr),clrLime);
+   ObjLine("PLs",t1,p.stop,t2,clrRed,STYLE_SOLID,2,StringFormat("Stop (onde sai se der errado) %s  (-$%.2f)",Fmt(p.stop),p.riskUSD),clrRed);
+   if(p.target>0) ObjLine("PLt",t1,p.target,t2,clrLime,STYLE_SOLID,2,StringFormat("Alvo (onde realiza o lucro) %s  (+$%.2f)  ganha %.1fx o risco",Fmt(p.target),p.targetUSD,p.rr),clrLime);
 }
 
 //--------------------------------------------------------------------
@@ -795,34 +796,84 @@ string Narrativa(const Plano &b,bool block,string nw)
    if(block) return (g_pare!=""? g_pare : nw)+". Hoje o trabalho é NÃO operar. Proteger a conta também é lucro.";
    string d=b.dir==1?"compra":"venda";
    string t="";
-   t+= g_mtf[2]==1?"H1 de alta":(g_mtf[2]==-1?"H1 de baixa":"H1 sem direção");
-   t+= g_mtf[3]==g_mtf[2] && g_mtf[2]!=0 ? " (M15 junto)" : " (M15 diferente)";
+   t+= g_mtf[2]==1?"gráfico de 1 hora subindo":(g_mtf[2]==-1?"gráfico de 1 hora caindo":"gráfico de 1 hora sem direção");
+   t+= g_mtf[3]==g_mtf[2] && g_mtf[2]!=0 ? " (o de 15 minutos junto)" : " (o de 15 minutos diferente)";
    // varrida
    string sw="";
    for(int v=0;v<ArraySize(g_niv);v++) if(g_niv[v].lado==-b.dir && g_niv[v].estado==ST_VARRIDA && (g_r[0].time-g_niv[v].tSweep)<=InpVarridaValida*PeriodSeconds(InpTFExec)) sw=g_niv[v].nome;
    t+= sw!="" ? ", varreu "+sw : ", ainda sem varrida do lado "+(b.dir==1?"de baixo":"de cima");
    int nb=ArraySize(g_bos);
-   if(nb>0 && g_bos[nb-1].dir==b.dir && b.pts[2]) t+=", "+(g_bos[nb-1].choch?"CHoCH":"BOS")+" no "+StringSubstr(EnumToString(InpTFExec),7)+" a favor";
-   else t+=", sem BOS a favor";
+   if(nb>0 && g_bos[nb-1].dir==b.dir && b.pts[2]) t+=", "+(g_bos[nb-1].choch?"mudou de direção":"rompeu a estrutura")+" a favor";
+   else t+=", ainda sem rompimento a favor";
    double px=SymbolInfoDouble(_Symbol,SYMBOL_BID); if(px<=0) px=g_r[0].close;
    string inH=InHTFFVG(b.dir,px);
    if(inH!="") t+=", preço DENTRO do "+inH+" de "+d;
    else if(StringFind(b.entNome,"vazio")>=0 || StringFind(b.entNome,"FVG")>=0) t+=", vazio de preço de "+d+" em "+Fmt(b.entry);
    t+=". ";
-   if(b.score>=InpScoreVerde)
+   if(b.score>=NotaForte())
    {
-      if((StringFind(b.entNome,"vazio")>=0||StringFind(b.entNome,"FVG")>=0) && MathAbs(px-b.entry)>0.3*g_atr) t+="=> Esperar o preço VOLTAR ao vazio de preço ("+Fmt(b.entry)+") e confirmar no M1; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
-      else t+="=> Setup de "+d+" montado. Só entre se o M1 confirmar; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
+      if((StringFind(b.entNome,"vazio")>=0||StringFind(b.entNome,"FVG")>=0) && MathAbs(px-b.entry)>0.3*g_atr) t+="=> Esperar o preço VOLTAR ao vazio de preço ("+Fmt(b.entry)+") e confirmar no gráfico de 1 minuto; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
+      else t+="=> Setup de "+d+" montado. Só entre se o gráfico de 1 minuto confirmar; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
    }
    else if(b.score>=InpScoreAmarelo)
    {
       string falta="";
-      string nm[7]={"tendência","varrida","BOS","FVG","volume","horário","alvo 2R"};
+      string nm[7]={"tendência","varrida","rompimento","vazio de preço","volume","horário","alvo 2x o risco"};
       for(int i=0;i<7;i++) if(!b.pts[i]) falta+=(falta==""?"":", ")+nm[i];
       t+="=> Atenção, mas ainda falta: "+falta+". Esperar.";
    }
    else t+="=> Nada pra fazer agora. Sem setup é sem operação.";
    return t;
+}
+
+//--------------------------------------------------------------------
+// v12.7: "E AGORA?" em português simples: COMPRAR / VENDER / ESPERAR / FICAR FORA
+// Mais rígido que a seta antiga: só chama compra/venda com nota >= InpNotaForte (9),
+// horário bom, gráfico de 1 hora a favor, alvo >= 2x o risco e preço perto da entrada.
+// Isso NÃO garante ganho: no teste de 10 anos a nota 7-8 perdeu e a 9-10 ficou perto de zero.
+int NotaForte(){ return MathMax(MathMax(InpNotaForte,InpScoreVerde),1); }
+string FaltaTxt(const Plano &b)
+{
+   string nm[7]={"gráfico de 1 hora a favor","varrida de liquidez","rompimento a favor","vazio de preço","volume forte","horário bom","alvo de 2x o risco"};
+   string f=""; int k=0;
+   for(int i=0;i<7;i++) if(!b.pts[i]){ if(k<3) f+=(f==""?"":", ")+nm[i]; k++; }
+   if(k>3) f+=" e mais "+IntegerToString(k-3);
+   return f;
+}
+// acao: COMPRAR | VENDER | ESPERAR | FICAR FORA ; porque: 1 linha ; oque: o que fazer, com preços
+string DecideAgora(string &porque,string &oque)
+{
+   datetime now=TimeTradeServer(); if(now==0) now=TimeCurrent();
+   string nw=NoticiaAviso(now);
+   Plano b=MelhorPlano();
+   double px=SymbolInfoDouble(_Symbol,SYMBOL_BID); if(px<=0 && ArraySize(g_r)>0) px=g_r[0].close;
+   string lado=(b.dir==1?"COMPRA":"VENDA");
+   if(g_pare!=""){ porque=g_pare+"."; oque="Hoje o trabalho é não operar. Proteger a conta também é lucro."; return "FICAR FORA"; }
+   if(nw!=""){ porque="Notícia forte chegando ("+nw+"). O preço pula pra todo lado."; oque="Não entra agora. Espera uns 15 minutos depois da notícia."; return "FICAR FORA"; }
+   if(!PlanoValido(b)){ porque="Não tem jogada montada no gráfico agora."; oque="Fica só olhando. Sem jogada é sem operação."; return "ESPERAR"; }
+   if(!b.pts[5]){ porque="Horário fraco (fora de Londres e Nova York): o ouro anda sem direção."; oque="Não entra. Espera Londres ou Nova York abrir."; return "FICAR FORA"; }
+   if(b.score<NotaForte()){ porque=StringFormat("Nota %d/10 pra %s: ainda fraco. Falta: %s.",b.score,lado,FaltaTxt(b)); oque=StringFormat("Não entra. Só chamo entrada com nota %d ou mais.",NotaForte()); return "ESPERAR"; }
+   if(!b.pts[0]){ porque="O gráfico de 1 hora tá contra essa "+lado+"."; oque="Não entra contra a maré. Espera."; return "ESPERAR"; }
+   if(b.rr<2.0){ porque=StringFormat("O alvo tá perto demais (só %.1fx o risco).",b.rr); oque="Não vale o risco. Espera."; return "ESPERAR"; }
+   string precos=StringFormat("Entrada %s | Stop %s | Alvo %s (alvo = %.1fx o risco). Lote %.2f arrisca ~$%.0f.",Fmt(b.entry),Fmt(b.stop),Fmt(b.target),b.rr,b.lot,b.riskUSD);
+   double atr=g_atr>0?g_atr:_Point*50;
+   if(MathAbs(px-b.entry)>0.3*atr)
+   {
+      porque=StringFormat("%s boa montada (nota %d/10), mas o preço tá longe da entrada.",lado,b.score);
+      oque="Espera o preço voltar em "+Fmt(b.entry)+". Se voltar: "+precos;
+      return "ESPERAR";
+   }
+   porque=StringFormat("Nota %d/10, gráfico de 1 hora a favor, horário bom, alvo grande.",b.score);
+   oque=precos+" Sem stop não entra.";
+   return b.dir==1?"COMPRAR":"VENDER";
+}
+// texto pronto pro Telegram (/agora, "e agora?")
+string AgoraTexto()
+{
+   string pq,oq; string a=DecideAgora(pq,oq);
+   string ic=(a=="COMPRAR"?"🟢":(a=="VENDER"?"🔴":(a=="ESPERAR"?"🟡":"⛔")));
+   double px=SymbolInfoDouble(_Symbol,SYMBOL_BID);
+   return ic+" AGORA: "+a+"\n"+_Symbol+" em "+Fmt(px)+"\nPor quê: "+pq+"\nO que fazer: "+oq+"\n(Leitura do gráfico, não é certeza. Teste de 10 anos: seguir sinal sozinho não deu lucro.)";
 }
 void Painel()
 {
@@ -924,7 +975,7 @@ void Core_Update(bool forcePanel=false)
    if(!g_noDraw){ DrawPlano(b); if(newBar||refresh){ DrawLinhasChave(); DrawCenarios(); RotulosArruma(); } Painel(); }
    // alerta (uma vez por barra)
    static int prevOk=0; // 0 = abaixo; +1/-1 = já avisou nessa direção
-   bool okNow=(PlanoValido(b) && b.score>=InpScoreAlerta && g_pare=="" && NoticiaAviso(now)=="");
+   bool okNow=(PlanoValido(b) && b.score>=MathMax(InpScoreAlerta,NotaForte()) && g_pare=="" && NoticiaAviso(now)=="");
    if(newBar && !okNow) prevOk=0;
    if(newBar && okNow && prevOk!=b.dir && g_lastAlert!=bt)
    {
