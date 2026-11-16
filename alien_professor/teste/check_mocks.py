@@ -664,7 +664,17 @@ def test_instalar():
     assert r"MetaQuotes\Terminal" in ps1 and "origin.txt" in ps1 and "RoboForex" in ps1
     assert r"Experts\ALIEN" in ps1 and "ALIEN_PROFESSOR*" in ps1 and "Remove-Item" in ps1
     assert "Read-Host" in ps1                       # pergunta o numero se tiver varios
-    assert "WebRequestUrl" in ps1 and "api.telegram.org" in ps1 and "generativelanguage.googleapis.com" in ps1
+    # v12.7: a lista WebRequestUrl e criptografada pelo MT5: NAO escrever endereco em texto, so consertar; ligar DLL; marcar o grafico
+    assert "AllowDllImport=1" in ps1 and "expertmode" in ps1 and "-bor 4" in ps1
+    assert '"WebRequestUrl=" + ($atuais' not in ps1 and '-notmatch "^https?://"' in ps1
+    assert "Stop-Process" in ps1 and "while (Get-Process -Name terminal64" in ps1
+    assert '"modo"' not in ps1.split("-notcontains $k")[0].split("@(")[-1]   # modo do Vitor nao e re-adicionado
+    net = open(ROOT+"/src/net.mqh").read()
+    assert '#import "wininet.dll"' in net and "int HttpReq(" in net and "WebRequest(" in net and "g_netAviso" in net
+    for f in ["auto_tg.mqh","ai.mqh","auto_chat.mqh","auto_learn.mqh","auto_agente.mqh"]:
+        src = open(ROOT+"/src/"+f).read()
+        assert "WebRequest(" not in src, f+" ainda chama WebRequest direto"
+        assert "Ferramentas > Op" not in src, f+" ainda manda instrucao de link"
     assert "foreach ($p in $todas) { Instala-Em $p }" not in ps1   # nao instala em todos
     gh = open(k+"SUBIR_GITHUB.ps1").read()
     assert "alien-dados" in gh and "push origin main" not in gh and "push -u origin $branch" in gh
@@ -716,7 +726,7 @@ def test_grupo():
     ln = open(os.path.join(ROOT, "src", "auto_learn.mqh"), encoding="utf-8").read()
     ag = open(os.path.join(ROOT, "src", "auto_agente.mqh"), encoding="utf-8").read()
     hd = open(os.path.join(ROOT, "src", "auto_head.mq5"), encoding="utf-8").read()
-    assert '#define APROF_VER "12.6"' in hd
+    assert '#define APROF_VER "12.7"' in hd
     assert 'k=="telegram_grupo_id"' in tg and 'k=="grupo_alertas"' in tg
     assert 'c0=="/grupo"' in ch and "fromId==g_cfgTgChat" in ch and 'CfgSalva("telegram_grupo_id",chat)' in ch
     assert "if(g_tgEmGrupo) return SendJsonMsg(TgDestino(),text,\"\")" in ln      # sem teclado no grupo
@@ -773,7 +783,7 @@ def botao_cmd(t):
     o = "".join(c for c in sem_acento_up(t) if "A" <= c <= "Z")
     return {"NOTICIAS":"/noticias","ANALISE":"/analise","PLANO":"/plano","FOTO":"/foto",
             "STATUS":"/status","PAUSA":"/pausa","RETOMA":"/retoma","AGENDA":"/agenda",
-            "EXPLICA":"/explica","TRADES":"/trades","ALERTAS":"/alertas"}.get(o, "")
+            "EXPLICA":"/explica","TRADES":"/trades","ALERTAS":"/alertas","EAGORA":"/agora","AGORA":"/agora"}.get(o, "")
 
 def test_botoes():
     assert botao_cmd("📰 Notícias") == "/noticias"
@@ -781,6 +791,7 @@ def test_botoes():
     assert botao_cmd("⏸️ Pausa") == "/pausa"
     assert botao_cmd("▶️ Retoma") == "/retoma"
     assert botao_cmd("e as notícias de hoje, vale entrar?") == ""
+    assert botao_cmd("⚡ E agora?") == "/agora"
     ag = _src("auto_agente.mqh"); ch = _src("auto_chat.mqh")
     kb = re.search(r'string TgKbFixo\(\)\s*\{\s*return (.*?);\s*\}', ag, re.S).group(1)
     js = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', kb)).replace('\\"', '"')

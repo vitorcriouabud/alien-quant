@@ -1,5 +1,28 @@
 # Mudanças do ALIEN PROFESSOR
 
+## Versão 12.7 — Conecta sozinho, fala simples e chama menos entradas (16/11/2026)
+**Por que a IA e o Telegram "caíam"**
+- O MT5 guarda a lista de sites liberados (WebRequest) **criptografada**. O INSTALAR antigo escrevia os sites em texto nessa linha, e isso **não funciona** (testei no MT5: continua bloqueado). Pior: ele grudava texto na lista que você tinha posto à mão, e o MT5 jogava a lista fora. Toda atualização derrubava a conexão.
+- Agora o robô fala com o Telegram e com o Gemini **pelo próprio Windows** e não depende mais dessa lista. O INSTALAR liga "Permitir importação de DLL" (isso o MT5 aceita), conserta a lista que a versão antiga estragou e marca o gráfico onde o ALIEN já está pra ele abrir sozinho.
+- Se o MT5 estiver aberto, o INSTALAR espera você fechar (ou fecha pra você se digitar S). Com o MT5 aberto ele desfaria tudo ao fechar.
+- Sua configuração: o INSTALAR **completa** o que falta (token, chat, chaves) e nunca troca o que já tem valor. Backup em ALIEN_config.txt.bak.
+- Telegram e IA **sempre ligados** quando tem token/chave (parâmetro antigo não desliga mais). Se a chave chegar depois, ele pega sozinho em até 30 s.
+- Sem internet: ele tenta de novo sozinho (2 s, 4 s ... até 60 s) e mostra **uma linha só** no painel: "Sem conexão com o Telegram agora. Tô tentando de novo sozinho." Nada de link nem instrução repetida.
+
+**AGORA: COMPRAR / VENDER / ESPERAR / FICAR FORA**
+- No topo do painel tem uma caixa grande: o que fazer agora, por quê (1 linha), e entrada, stop e alvo em preço. Amarela = COMPRAR, branca = VENDER, preta = ESPERAR / FICAR FORA.
+- No Telegram: botão **⚡ E agora?**, **/agora**, ou escreva "e agora?", "compro ou vendo?", "o que eu faço?", "tô perdido". Resposta curta no mesmo formato.
+- A IA recebe essa decisão e é proibida de chamar entrada que a decisão não chamou. Fala sem sigla.
+- Etiquetas do gráfico e textos sem sigla: "rompimento", "mudança de direção", "vazio de preço (gráfico de 1 hora)", "Stop (onde sai se der errado)", "Alvo (onde realiza o lucro) ... ganha 2,5x o risco".
+
+**Mais rígido (com honestidade)**
+- COMPRAR/VENDER só com: nota **9 ou mais** (antes 7), horário bom (Londres/NY), gráfico de 1 hora a favor, alvo de pelo menos 2x o risco e preço perto da entrada. Senão é ESPERAR ou FICAR FORA. Notícia forte chegando ou "pare por hoje" = FICAR FORA.
+- Avisos automáticos e o modo autônomo na demo usam o mesmo 9 (você muda com /nota 7 se quiser, sua escolha).
+- Por que 9: no teste de 10 anos, nota 7–8 perdeu feio (−0,32R por trade, 12.610 trades). Nota 9–10 ficou perto de zero (+0,02R em 2016–2024, −0,10R em 2025). **Isso não é vantagem comprovada**: são menos entradas, mais claras, e fora da faixa que perdia. Não prometo acertar mais.
+- Limites do dia continuam **só avisando** (sem trava). Sem martingale, sem grade, sem preço médio.
+
+**O que você faz:** feche o MT5, dois cliques no INSTALAR.bat, abra o MT5. Só isso.
+
 ## Versão 12.6 — O Alier te explica o gráfico, obedece, mostra seus trades e opera na demo (15/11/2026)
 **Entender o gráfico**
 - Mande **/explica** ou escreva "o que é essa linha?" / "me explica o gráfico". Ele manda o print e explica, em português simples, cada coisa desenhada agora (com o preço): níveis, vazios de preço, blocos, varridas, VWAP, STOP/ALVO do plano, setas, seus alertas.

@@ -27,9 +27,18 @@ function Escolhe-Terminal {
   return $lista[$k - 1]
 }
 Write-Host ""
-if (Get-Process -Name terminal64 -ErrorAction SilentlyContinue) {
-  Write-Host "O MT5 esta aberto. Feche o MT5 (no X) e aperte Enter para continuar." -ForegroundColor Yellow
-  Read-Host | Out-Null
+# v12.7: o MT5 regrava a configuracao quando fecha -> tem que estar FECHADO, senao ele desfaz tudo
+$tent = 0
+while (Get-Process -Name terminal64 -ErrorAction SilentlyContinue) {
+  $tent++
+  if ($tent -ge 2) {
+    $r = Read-Host "O MT5 continua aberto. Digite S e Enter para eu fechar ele pra voce (ou so Enter depois de fechar no X)"
+    if ($r -match "^[sS]") { Get-Process -Name terminal64 -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWindow() | Out-Null }; Start-Sleep -Seconds 6
+      Get-Process -Name terminal64 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2 }
+  } else {
+    Write-Host "O MT5 esta aberto. Feche o MT5 (no X) e aperte Enter para continuar." -ForegroundColor Yellow
+    Read-Host | Out-Null
+  }
 }
 $p = Escolhe-Terminal
 if ($null -eq $p) { exit 1 }
@@ -70,12 +79,22 @@ if (Test-Path $cfgSrc) {
   if (-not (Test-Path $cfgDst)) { Copy-Item $cfgSrc $cfgDst; Write-Host "Configuracao pessoal instalada (MQL5\Files\ALIEN_config.txt)." -ForegroundColor Green }
   else {
     Write-Host "Mantive a sua configuracao pessoal que ja existia (ALIEN_config.txt)."
-    # v12.6: acrescenta so as linhas novas do kit (autonomo, telegram_ordens) se ainda nao existirem. Nunca mexe nas chaves.
-    $atual = Get-Content $cfgDst -ErrorAction SilentlyContinue
-    foreach ($k in @("autonomo","telegram_ordens")) {
-      $tem = $atual | Where-Object { $_ -match ("^\s*" + $k + "\s*=") }
-      $linha = Get-Content $cfgSrc | Where-Object { $_ -match ("^\s*" + $k + "\s*=") } | Select-Object -First 1
-      if (-not $tem -and $linha) { Add-Content -Path $cfgDst -Value $linha; Write-Host ("Acrescentei na configuracao: " + $linha) -ForegroundColor Green }
+    # v12.7: completa o que falta (token, chat, chaves, opcoes). Linha que ja tem valor NUNCA e trocada.
+    $atual = @(Get-Content $cfgDst -ErrorAction SilentlyContinue)
+    $novas = @(); $mudou = $false
+    foreach ($linha in (Get-Content $cfgSrc)) {
+      if ($linha -notmatch "^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$") { continue }
+      $k = $Matches[1]; $v = $Matches[2].Trim(); if ($v -eq "") { continue }
+      if (@("telegram_token","telegram_chat_id","telegram_grupo_id","gemini_chave_1","gemini_chave_2","xai_chave","telegram_ordens","autonomo") -notcontains $k.ToLower()) { continue }   # "modo" e outras escolhas suas: nao mexo
+      $i = -1
+      for ($j = 0; $j -lt $atual.Count; $j++) { if ($atual[$j] -match ("^\s*" + $k + "\s*=")) { $i = $j; break } }
+      if ($i -lt 0) { $novas += $linha; $mudou = $true }
+      elseif (($atual[$i] -replace "^[^=]*=", "").Trim() -eq "") { $atual[$i] = $linha; $mudou = $true }
+    }
+    if ($mudou) {
+      Copy-Item $cfgDst ($cfgDst + ".bak") -Force
+      Set-Content -Path $cfgDst -Value ($atual + $novas) -Encoding Default
+      Write-Host "Completei o que faltava na configuracao (backup em ALIEN_config.txt.bak). Chave que ja existia nao mudei." -ForegroundColor Green
     }
   }
 }
@@ -111,54 +130,94 @@ if ($Compilar) {
   }
 }
 
-# ---- WebRequest: libera Telegram e Gemini no config\common.ini (MT5 fechado) ----
-$urls = @("https://api.telegram.org", "https://generativelanguage.googleapis.com")
+# ---- v12.7: conexao automatica (Telegram e IA) ----
+# O MT5 guarda a lista de sites do WebRequest CRIPTOGRAFADA. Escrever o site em texto nao funciona
+# (testado) e as versoes antigas deste instalador ESTRAGAVAM a lista que voce tinha posto a mao.
+# Agora: o robo conecta pelo proprio Windows (precisa de "Permitir importacao de DLL"), e aqui:
+#  1) liga AllowDllImport=1 no config\common.ini
+#  2) conserta a linha WebRequestUrl que as versoes antigas estragaram (tira so o texto que elas puseram)
+#  3) no grafico onde o ALIEN ja esta, marca "permitir DLL" (senao o MT5 nao carrega o robo novo)
+function Le-Texto($arq) {
+  $bytes = [System.IO.File]::ReadAllBytes($arq)
+  $uni = ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE)
+  if ($uni) { $t = [System.Text.Encoding]::Unicode.GetString($bytes) } else { $t = (New-Object System.Text.UTF8Encoding($false)).GetString($bytes) }
+  if ($t.Length -gt 0 -and $t[0] -eq [char]0xFEFF) { $t = $t.Substring(1) }
+  return @{ Texto = $t; Uni = $uni }
+}
+function Grava-Texto($arq, $txt, $uni) {
+  if ($uni) { [System.IO.File]::WriteAllText($arq, $txt, (New-Object System.Text.UnicodeEncoding($false, $true))) }
+  else { [System.IO.File]::WriteAllText($arq, $txt, (New-Object System.Text.UTF8Encoding($false))) }
+}
 $ini = Join-Path $p.FullName "config\common.ini"
 $webOk = $false
 try {
-  if (Test-Path $ini) {
-    $bytes = [System.IO.File]::ReadAllBytes($ini)
-    $uni = ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE)
-    if ($uni) { $enc = [System.Text.Encoding]::Unicode } else { $enc = New-Object System.Text.UTF8Encoding($false) }
-    $txt = $enc.GetString($bytes)
-    if ($uni -and $txt.Length -gt 0 -and $txt[0] -eq [char]0xFEFF) { $txt = $txt.Substring(1) }
-    Copy-Item $ini ($ini + ".bak") -Force
-    $lines = New-Object System.Collections.ArrayList
-    foreach ($l in ($txt -split "`r?`n")) { [void]$lines.Add($l) }
-    $sec = -1; $fim = $lines.Count
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-      if ($lines[$i].Trim() -eq "[Experts]") { $sec = $i; continue }
-      if ($sec -ge 0 -and $i -gt $sec -and $lines[$i].Trim().StartsWith("[")) { $fim = $i; break }
-    }
-    if ($sec -lt 0) {
-      [void]$lines.Add("[Experts]"); $sec = $lines.Count - 1; $fim = $lines.Count
-    }
-    $iWeb = -1; $iUrl = -1
-    for ($i = $sec + 1; $i -lt $fim; $i++) {
-      if ($lines[$i] -match "^WebRequest=") { $iWeb = $i }
-      if ($lines[$i] -match "^WebRequestUrl=") { $iUrl = $i }
-    }
-    $atuais = @()
-    if ($iUrl -ge 0) { $atuais = @(($lines[$iUrl] -replace "^WebRequestUrl=", "") -split ";" | Where-Object { $_ -ne "" }) }
-    foreach ($u in $urls) { if ($atuais -notcontains $u) { $atuais += $u } }
-    $novaUrl = "WebRequestUrl=" + ($atuais -join ";")
-    if ($iUrl -ge 0) { $lines[$iUrl] = $novaUrl } else { $lines.Insert($fim, $novaUrl) }
-    if ($iWeb -ge 0) { $lines[$iWeb] = "WebRequest=1" } else { $lines.Insert($sec + 1, "WebRequest=1") }
-    $out = ($lines -join "`r`n")
-    if ($uni) { [System.IO.File]::WriteAllText($ini, $out, (New-Object System.Text.UnicodeEncoding($false, $true))) }
-    else { [System.IO.File]::WriteAllText($ini, $out, $enc) }
-    $webOk = $true
+  $uni = $true; $txt = ""
+  if (Test-Path $ini) { $l = Le-Texto $ini; $txt = $l.Texto; $uni = $l.Uni; Copy-Item $ini ($ini + ".bak") -Force }
+  else { New-Item -ItemType Directory -Force -Path (Split-Path $ini) | Out-Null }
+  $lines = New-Object System.Collections.ArrayList
+  foreach ($x in ($txt -split "`r?`n")) { [void]$lines.Add($x) }
+  while ($lines.Count -gt 0 -and $lines[$lines.Count - 1] -eq "") { $lines.RemoveAt($lines.Count - 1) }
+  $sec = -1; $fim = $lines.Count
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i].Trim() -eq "[Experts]") { $sec = $i; continue }
+    if ($sec -ge 0 -and $i -gt $sec -and $lines[$i].Trim().StartsWith("[")) { $fim = $i; break }
   }
+  if ($sec -lt 0) { [void]$lines.Add("[Experts]"); $sec = $lines.Count - 1; $fim = $lines.Count }
+  $iDll = -1; $iWeb = -1
+  for ($i = $fim - 1; $i -gt $sec; $i--) {
+    if ($lines[$i] -match "^AllowDllImport=") { $iDll = $i }
+    elseif ($lines[$i] -match "^WebRequest=") { $iWeb = $i }
+    elseif ($lines[$i] -match "^WebRequestUrl=") {
+      # conserta: tira os enderecos em texto que o instalador antigo grudou na lista criptografada
+      $partes = @(($lines[$i] -replace "^WebRequestUrl=", "") -split "[;,]" | Where-Object { $_ -ne "" -and $_ -notmatch "^https?://" })
+      if ($partes.Count -eq 0) { $lines.RemoveAt($i); $fim--; if ($iDll -gt $i) { $iDll-- }; if ($iWeb -gt $i) { $iWeb-- } }
+      else { $lines[$i] = "WebRequestUrl=" + ($partes -join ";") }
+    }
+  }
+  if ($iDll -ge 0) { $lines[$iDll] = "AllowDllImport=1" } else { $lines.Insert($sec + 1, "AllowDllImport=1"); $fim++; if ($iWeb -ge 0) { $iWeb++ } }
+  if ($iWeb -ge 0) { $lines[$iWeb] = "WebRequest=1" } else { $lines.Insert($sec + 1, "WebRequest=1") }
+  Grava-Texto $ini (($lines -join "`r`n") + "`r`n") $uni
+  $webOk = $true
 } catch { $webOk = $false }
+# graficos salvos (perfis e modelos) com o ALIEN: liga o bit "permitir DLL" (4) do expertmode
+$nGraf = 0
+$pastas = @((Join-Path $mql "Profiles\Charts"), (Join-Path $mql "Profiles\Templates"), (Join-Path $p.FullName "Profiles\Charts"), (Join-Path $p.FullName "Profiles\Templates"))
+foreach ($pa in $pastas) {
+  if (-not (Test-Path $pa)) { continue }
+  Get-ChildItem $pa -Recurse -File -Include *.chr, *.tpl -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      $l = Le-Texto $_.FullName
+      if ($l.Texto -notmatch "ALIEN_PROFESSOR") { return }
+      $ls = $l.Texto -split "`r?`n"; $dentro = $false; $alien = $false; $iMode = -1; $mudou = $false
+      for ($i = 0; $i -lt $ls.Count; $i++) {
+        $x = $ls[$i].Trim()
+        if ($x -eq "<expert>") { $dentro = $true; $alien = $false; $iMode = -1; continue }
+        if (-not $dentro) { continue }
+        if ($x -match "^(name|path)=.*ALIEN_PROFESSOR") { $alien = $true }
+        if ($x -match "^expertmode=") { $iMode = $i }
+        if ($x -eq "<inputs>" -or $x -eq "</expert>") {
+          if ($alien -and $iMode -ge 0) {
+            $m = 0; [void][int]::TryParse(($ls[$iMode].Trim() -replace "^expertmode=", ""), [ref]$m)
+            if (($m -band 4) -eq 0) { $ls[$iMode] = "expertmode=" + ($m -bor 4); $mudou = $true }
+          }
+          $dentro = $false
+        }
+      }
+      if ($mudou) { Copy-Item $_.FullName ($_.FullName + ".bak") -Force; Grava-Texto $_.FullName ($ls -join "`r`n") $l.Uni; $nGraf++ }
+    } catch { }
+  }
+}
 if ($webOk) {
-  Write-Host "WebRequest liberado para Telegram e Gemini (backup em config\common.ini.bak)." -ForegroundColor Green
+  Write-Host "Conexao automatica ligada (Telegram e IA). Nao precisa mexer em nada no MT5." -ForegroundColor Green
+  if ($nGraf -gt 0) { Write-Host ("Ajustei " + $nGraf + " grafico(s) salvo(s) com o ALIEN pra ele abrir sozinho.") -ForegroundColor Green }
 } else {
-  Write-Host "Nao consegui liberar o WebRequest sozinho: no MT5 va em Ferramentas > Opcoes > Expert Advisors, marque Permitir WebRequest e adicione https://api.telegram.org e https://generativelanguage.googleapis.com" -ForegroundColor Yellow
+  Write-Host "Nao consegui ligar a conexao sozinho. No MT5: Ferramentas > Opcoes > Expert Advisors > marque 'Permitir importacao de DLL'." -ForegroundColor Yellow
 }
 
 $temVitor = (Test-Path $cfgDst)
 Write-Host ""
-Write-Host "Pronto! Abra o MT5 e arraste ALIEN_PROFESSOR_AUTO (pasta Consultor expert > ALIEN) no grafico XAUUSD M1." -ForegroundColor Green
+Write-Host "Pronto! Abra o MT5. Se o ALIEN ja estava no grafico, ele volta sozinho, atualizado e conectado." -ForegroundColor Green
+Write-Host "Se nao estava: arraste ALIEN_PROFESSOR_AUTO (Consultor expert > ALIEN) no grafico XAUUSD M1 e deixe marcado Permitir importacao de DLL."
 if ($temVitor) {
   Write-Host "Sua configuracao (Telegram, IA e chat) esta em MQL5\Files\ALIEN_config.txt. Nao precisa mexer em parametro."
 } else {
