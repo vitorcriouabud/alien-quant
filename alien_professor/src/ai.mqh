@@ -24,7 +24,8 @@ void AICfgInit(){ g_cfgAIKey=InpAIKey; g_cfgAI2Key=InpAI2Key; g_cfgGem2=InpGemin
 string   g_aiTxt="";
 datetime g_aiLast=0;
 
-bool AIOn(){ return InpUseAI && (StringLen(g_cfgAIKey)>10 || StringLen(g_cfgAI2Key)>10 || StringLen(g_cfgGem2)>10) && !MQLInfoInteger(MQL_TESTER); }
+bool AIOn(){ return (   // v12.7: IA forçada ligada quando tem chave
+   StringLen(g_cfgAIKey)>10 || StringLen(g_cfgAI2Key)>10 || StringLen(g_cfgGem2)>10) && !MQLInfoInteger(MQL_TESTER); }
 string JEsc(string s)
 {
    // escape JSON-string: \ " \n \r \t e controles <0x20 como \u00XX
@@ -397,15 +398,15 @@ string AIAskOne(string sys,string estado,string endpoint,string model,string key
    for(int i=0;i<n;i++) data[i]=(char)utf8[i];
    string hdr="Content-Type: application/json\r\nAuthorization: Bearer "+key+"\r\n";
    ResetLastError();
-   int code=WebRequest("POST",endpoint,hdr,15000,data,res,rh);
+   int code=HttpReq("POST",endpoint,hdr,15000,data,res,rh);
    // limite do plano grátis (429) ou servidor ocupado (5xx): espera e tenta de novo (2 s, depois 5 s)
    for(int tent=0; tent<2 && (code==429 || code==500 || code==503); tent++)
    {
       Print("IA [",model,"] ocupada (",code,") - tentando de novo");
       Sleep(tent==0?2000:5000); ArrayResize(res,0); ResetLastError();
-      code=WebRequest("POST",endpoint,hdr,15000,data,res,rh);
+      code=HttpReq("POST",endpoint,hdr,15000,data,res,rh);
    }
-   if(code==-1){ g_aiLastErr="WebRequest bloqueado (erro "+IntegerToString(GetLastError())+")"; Print("IA [",model,"] ",g_aiLastErr,". Adicione o endereço do endpoint em Ferramentas > Opções > Expert Advisors."); return ""; }
+   if(code==-1){ g_aiLastErr="sem conexão"; NetFalhaAviso(); return ""; }
    string r=CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8);
    if(code!=200){ g_aiLastErr=IntegerToString(code)+": "+StringSubstr(r,0,300); Print("IA [",model,"] respondeu ",g_aiLastErr); return ""; }
    string t=JContent(r); StringReplace(t,"**",""); StringTrimLeft(t); StringTrimRight(t);
@@ -418,13 +419,12 @@ bool AIVetou(string t,int dir){ if(!InpAIVeto || t=="") return false; return g_a
 string AIFalhaTxt()
 {
    if(StringFind(g_aiLastErr,"429")==0) return "A IA grátis do Google tá no limite agora 😅 Espera 1 minutinho e me manda de novo.";
-   if(StringFind(g_aiLastErr,"WebRequest")>=0) return "Não consegui falar com a IA: o MT5 bloqueou o acesso (WebRequest). Rode o INSTALAR.bat de novo com o MT5 fechado.";
+   if(StringFind(g_aiLastErr,"sem conex")>=0) return "Tô sem conexão com a IA agora. Já tô tentando de novo sozinho, manda de novo em 1 minutinho.";
    if(StringFind(g_aiLastErr,"5")==0) return "Os servidores da IA tão ocupados agora. Tenta de novo em 1 minuto 🙏";
    return "A IA não respondeu agora. Tenta de novo em 1 minuto.";
 }
 string AIStatus()
 {
-   if(!InpUseAI) return "IA: desligada";
    if(StringLen(g_cfgAIKey)<=10 && StringLen(g_cfgAI2Key)<=10 && StringLen(g_cfgGem2)<=10) return "IA: coloque a chave Gemini em MQL5\\Files\\ALIEN_config.txt (gemini_chave_1=...) ou em InpAI2Key";
    if(MQLInfoInteger(MQL_TESTER)) return "IA: não roda no testador";
    return "";

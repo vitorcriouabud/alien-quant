@@ -599,11 +599,11 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
       if(!plano)
       {
          if(soNoticia){ SendMsg(NoticiasTxt()); return; }
-         SendMsg("A IA tá desligada agora (falta chave ou WebRequest). Se quiser a leitura do gráfico, manda /analise ou /plano. Notícias: /noticias.");
+         SendMsg("A IA não respondeu agora (tô tentando de novo sozinho). Se quiser a leitura do gráfico, manda /analise ou /plano. Notícias: /noticias.");
          return;
       }
       Plano b=MelhorPlano();
-      SendMsg("A IA tá desligada agora (falta chave ou WebRequest). Segue a leitura do gráfico:\n"+EdgeSePreciso(Narrativa(b,g_pare!=""||NoticiaAviso(TimeTradeServer())!="",NoticiaAviso(TimeTradeServer()))));
+      SendMsg("A IA não respondeu agora (tô tentando de novo sozinho). Segue a leitura do gráfico:\n"+EdgeSePreciso(Narrativa(b,g_pare!=""||NoticiaAviso(TimeTradeServer())!="",NoticiaAviso(TimeTradeServer()))));
       if(FotoDepoisDaResposta(pergunta,forcarPlano,sym)){ if(fotoAlvo) FotoTF(sym,tf,sym+" "+TfNome(tf)); else TgFoto(FotoLegenda()); }
       return;
    }
@@ -702,6 +702,7 @@ string AjudaTxt()
           "/foto - print com uma explicação curtinha\n"
           "/memoria - o que eu lembro de você  |  /esquece - apago\n"
           "/grupo - (no grupo, só o Vitor) libera o grupo pra falar comigo\n"
+          "⚡ /agora ou \"e agora?\" - o que fazer AGORA, por quê, stop e alvo\n"
           "🆕 /explica - o que é cada linha do gráfico | /aula fvg | /guia - legenda\n"
           "🆕 /trades - seus trades de hoje e o porquê | /podes - tudo que eu sei fazer\n"
           "🆕 Me dá ordens com suas palavras: \"me avisa em 3900\", \"modo limpo\", \"não me deixa operar na Ásia\", \"me lembra 10:30\"\n"
@@ -776,6 +777,7 @@ void TgHandle(string chat,string text)
    if(iscmd){ SendMsg("Não peguei esse comando.\n\n"+AjudaTxt()); return; }
    // v12.6: pedidos em texto livre que o robô resolve sem IA
    if(EhPedidoExplica(text)){ MemAdd(g_tgQuem,text); ExplicaEnvia(); return; }
+   if(EhPedidoAgora(text)){ MemAdd(g_tgQuem,text); SendMsg(AgoraTexto()); return; }   // v12.7: resposta simples e direta
    if(EhPedidoTrades(text)){ MemAdd(g_tgQuem,text); TradesEnvia(true); return; }
    if(EhPedidoPodes(text)){ MemAdd(g_tgQuem,text); SendMsg(PodesTxt()); return; }
    { OrdemPend op; if(OrdemDeTexto(text,op) && op.tipo>0){ MemAdd(g_tgQuem,text); if(!TgDono()){ SendMsg("Ordem só o Vitor pode mandar 🙏"); return; } OrdemPropoe(op); return; } }
@@ -795,7 +797,7 @@ string BotUser()
    {
       g_botUserTent=TimeLocal();
       char data[],res[]; string rh;
-      int code=WebRequest("GET","https://api.telegram.org/bot"+g_cfgTgToken+"/getMe","",5000,data,res,rh);
+      int code=HttpReq("GET","https://api.telegram.org/bot"+g_cfgTgToken+"/getMe","",5000,data,res,rh);
       if(code==200){ string u=JStrKey(CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8),"username"); if(u!="") g_botUser=u; }
    }
    if(g_botUser=="") return "Alierprofessorbot";
@@ -842,13 +844,13 @@ void TgMasterRenova(){ if(g_tgMaster && GlobalVariableCheck("APROF_TGM_ID") && G
 void TgOffSincroniza(){ string s=ArqLe(g_tgEstArq); if(s=="") return; string l[]; if(StringSplit(s,'\n',l)>0){ long o=StringToInteger(l[0]); if(o>g_tgOff) g_tgOff=o; } }
 void TgPoll()
 {
-   if(!TgTokenOk() || !InpTgChat) return;
+   if(!TgTokenOk() || !TgChatOn()) return;
    g_tgMaster=TgMaster(); if(!g_tgMaster) return;
    TgOffSincroniza();
    string url="https://api.telegram.org/bot"+g_cfgTgToken+"/getUpdates?timeout=0&limit=20&offset="+IntegerToString(g_tgOff);
    char data[],res[]; string rh; ResetLastError();
-   int code=WebRequest("GET",url,"",5000,data,res,rh);
-   if(code==-1){ if(g_tgErrPrint++%60==0) Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),"). Adicione https://api.telegram.org em Ferramentas > Opções > Expert Advisors."); return; }
+   int code=HttpReq("GET",url,"",5000,data,res,rh);
+   if(code==-1){ NetFalhaAviso(); return; }
    string r=CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8);
    if(code!=200){ if(g_tgErrPrint++%60==0) Print("Telegram getUpdates respondeu ",code,code==409?" (o bot tem webhook ou outro programa lendo - só um pode ler)":(code==401?" (token inválido - crie um novo no @BotFather)":""),": ",StringSubstr(r,0,200)); return; }
    int pos=0; bool mudou=false;
@@ -944,7 +946,7 @@ void TgPoll()
 void TgPreAlerta()
 {
    if(!TgOk() || InpPreAlertaMin<=0 || !CalOn()) return;
-   if(InpTgChat && !g_tgMaster) return;
+   if(TgChatOn() && !g_tgMaster) return;
    LoadNews(); datetime now=TimeTradeServer();
    for(int i=0;i<ArraySize(g_news);i++)
    {

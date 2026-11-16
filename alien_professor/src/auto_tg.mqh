@@ -70,7 +70,9 @@ string UrlEnc(string s)
    return r;
 }
 // WebRequest não existe no testador -> Telegram desligado lá
-bool TgTokenOk(){ return InpUseTelegram && StringLen(g_cfgTgToken)>20 && !MQLInfoInteger(MQL_TESTER); }
+// v12.7: Telegram FORÇADO ligado (o parâmetro InpUseTelegram/InpTgChat antigo não desliga mais)
+bool TgChatOn(){ return true; }
+bool TgTokenOk(){ return StringLen(g_cfgTgToken)>20 && !MQLInfoInteger(MQL_TESTER); }
 bool TgOk(){ return TgTokenOk() && StringLen(g_cfgTgChat)>0; }
 // destino da resposta: o chat de onde veio a mensagem (grupo ou privado); fora disso, o privado do dono
 string TgDestino(){ return g_tgReply!=""?g_tgReply:g_cfgTgChat; }
@@ -90,8 +92,8 @@ bool SendMsgTo(string chat,string text)
    string body="chat_id="+UrlEnc(chat)+"&text="+UrlEnc(text);
    char data[],res[]; string rh; StringToCharArray(body,data,0,StringLen(body));  // body já é ASCII (url-encoded)
    ResetLastError();
-   int code=WebRequest("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",8000,data,res,rh);
-   if(code==-1){ Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),"). Adicione https://api.telegram.org em Ferramentas > Opções > Expert Advisors."); return false; }
+   int code=HttpReq("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",8000,data,res,rh);
+   if(code==-1){ NetFalhaAviso(); return false; }
    if(code!=200) Print("Telegram respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
@@ -111,8 +113,8 @@ bool SendPhoto(string file,string caption)
    AddStr(buf,"\r\n--"+bd+"--\r\n");
    char res[]; string rh;
    ResetLastError();
-   int code=WebRequest("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendPhoto","Content-Type: multipart/form-data; boundary="+bd+"\r\n",15000,buf,res,rh);
-   if(code==-1){ Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),")"); return false; }
+   int code=HttpReq("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendPhoto","Content-Type: multipart/form-data; boundary="+bd+"\r\n",15000,buf,res,rh);
+   if(code==-1){ NetFalhaAviso(); return false; }
    if(code!=200) Print("Telegram foto respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
