@@ -74,9 +74,10 @@ void Diario(const Plano &b,string acao)
    CsvAppend("ALIEN_diario.csv","hora;simbolo;lado;nota;faixa;sessao;entrada;stop;alvo;rr;lote;acao",
       StringFormat("%s;%s;%s;%d;%s;%s;%s;%s;%s;%.2f;%.2f;%s",TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES),_Symbol,b.dir==1?"compra":"venda",b.score,Faixa(b.score),
       SessNome(TimeCurrent()),Fmt(b.entry),Fmt(b.stop),b.target>0?Fmt(b.target):"-",b.rr,b.lot,acao));
+   DecisaoLog(b,acao);   // v12.6: toda decisão (entrou ou pulou) com a foto completa
 }
 // estatística do histórico (ALIEN_aprendizado.csv) para a IA e para a trava opcional
-struct HistRow { string sym; int dir; int score; string sess; int hour; double R; };
+struct HistRow { string sym; int dir; int score; string sess; int hour; double R; datetime t; };
 HistRow g_hist[]; datetime g_histLoad=0;
 void LoadHist()
 {
@@ -91,7 +92,7 @@ void LoadHist()
       string c[]; if(StringSplit(ln,';',c)<10) continue;
       int k=ArraySize(g_hist); ArrayResize(g_hist,k+1);
       g_hist[k].sym=c[1]; g_hist[k].dir=(c[2]=="compra"?1:-1); g_hist[k].score=(int)StringToInteger(c[3]);
-      g_hist[k].sess=c[5]; g_hist[k].hour=(int)StringToInteger(c[6]); g_hist[k].R=StringToDouble(c[9]);
+      g_hist[k].t=StringToTime(c[0]); g_hist[k].sess=c[5]; g_hist[k].hour=(int)StringToInteger(c[6]); g_hist[k].R=StringToDouble(c[9]);
    }
    FileClose(h);
 }
@@ -191,19 +192,23 @@ void TentaOperar()
    if(TemPosOuOrdem()){ Diario(b,"pulado: já tem posição"); return; }
    LoadHist();
    if(InpAprenderDesativar && FaixaDesativada(Faixa(b.score),b.dir,SessNome(TimeCurrent()))){ Diario(b,"pulado: faixa desativada pelo histórico"); Print("ALIEN AUTO: faixa desativada pelo seu histórico - pulei"); return; }
+   if(PorAutonomo()){ string af=AutonomoFiltro(b); if(af!=""){ Diario(b,"pulado (autônomo): "+af); Print("ALIEN autônomo: pulei - ",af); return; } }
    if(b.loteMinAcima || b.lot<=0){ Print("ALIEN AUTO: lote mínimo passa do risco - pulei"); return; }
    if(!PlanoValido(b) || b.rr+1e-12<RRMinAlvo()){ Diario(b,"pulado: "+PlanoSemSetup(b.dir)); Print("ALIEN AUTO: ",PlanoSemSetup(b.dir)," - não opero com RR abaixo do mínimo"); return; }
    double ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK), bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    double sl=NormP(b.stop);
    double risk=MathAbs(b.entry-b.stop);
    if(risk<=0) return;
-   if(InpSpreadMaxPctStop>0 && (ask-bid)>InpSpreadMaxPctStop/100.0*risk){ Print("ALIEN AUTO: spread alto - pulei"); return; }
+   if(InpSpreadMaxPctStop>0 && (ask-bid)>InpSpreadMaxPctStop/100.0*risk){ Diario(b,"pulado: spread alto"); Print("ALIEN AUTO: spread alto - pulei"); return; }
    double tp=NormP(b.target);
    double minDist=(double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)*_Point;
    double lot=NormalizeDouble(b.lot,2);
    string cm=StringFormat("APROF %d/10",b.score);
    // IA: comenta o sinal; só pode VETAR se InpAIVeto = true (nunca abre trade)
    string ia=AIAsk(AgoraCurtoIA()+StateJSON(b)); if(ia!=""){ AIPanelSet(ia); ObsSet(ia,"🤖"); VereditoLog("sinal"); }
+   // v12.6: no autônomo a IA (se respondeu) pode só aprovar ou vetar; nunca muda nível
+   bool vetoAuto=(PorAutonomo() && ia!="" && g_aiVeredito!="" && g_aiVeredito!=(b.dir==1?"COMPRA":"VENDA"));
+   if(vetoAuto){ Diario(b,"pulado (autônomo): IA vetou ("+g_aiVeredito+")"); Notifica(StringFormat("🤖 Autônomo: achei %s nota %d/10 no %s, mas a IA disse %s. Não entrei.",b.dir==1?"compra":"venda",b.score,_Symbol,g_aiVeredito)); return; }
    if(AIVetou(ia,b.dir)){ Diario(b,"pulado: IA vetou"); Notifica(StringFormat("A IA vetou o sinal do %s nota %d/10. Não entrei. %s",_Symbol,b.score,ia)); return; }
    bool ok=false; bool limite=(StringFind(b.entNome,"FVG")>=0 || StringFind(b.entNome,"vazio")>=0);
    if(limite)
@@ -222,7 +227,7 @@ void TentaOperar()
    if(ok && TgOk() && InpTgFoto && !MQLInfoInteger(MQL_TESTER)){ string f="APROF_auto.png"; ChartRedraw(0); if(ChartScreenShot(0,f,1600,900,ALIGN_RIGHT)) SendPhoto(f,StringFormat("ALIEN AUTO %s %s nota %d/10",_Symbol,b.dir==1?"COMPRA":"VENDA",b.score)); }
    if(ok){ Diario(b,limite?"ordem limitada":"a mercado"); g_sigRiskUSD=b.riskUSD; g_sigScore=b.score; g_sigDir=b.dir; g_sigTime=TimeCurrent(); MqlDateTime md; TimeToStruct(TimeCurrent(),md); g_sigHour=md.hour; g_sigSess=SessNome(TimeCurrent()); }
    else Diario(b,"recusada pela corretora");
-   if(ok) Notifica(StringFormat("Bora: mandei %s de %s no %s, nota %d/10. Lote %.2f, entrada %s, stop %s, alvo %s (risco ~$%.2f). %s",
+   if(ok) Notifica((PorAutonomo()?"🤖 Autônomo (demo) decidiu sozinho. ":"")+StringFormat("Bora: mandei %s de %s no %s, nota %d/10. Lote %.2f, entrada %s, stop %s, alvo %s (risco ~$%.2f). %s",
                    limite?"limitada":"a mercado",b.dir==1?"🟢 COMPRA":"🔴 VENDA",_Symbol,b.score,lot,Fmt(b.entry),Fmt(sl),Fmt(tp),b.riskUSD,Narrativa(b,false,""))+(ia!=""?"\n\nO que a IA achou:\n"+ia:""));
    else Print("ALIEN AUTO: ordem recusada ",g_tr.ResultRetcode()," ",g_tr.ResultRetcodeDescription());
 }
@@ -234,7 +239,9 @@ int OnInit()
    g_tr.SetDeviationInPoints(30);
    g_tr.SetTypeFillingBySymbol(_Symbol);
    CfgLoad();
+   PrefLoad(); AdaptLoad();
    Core_Init();
+   UsuarioDesenha();
    g_peak=MathMax(AccountInfoDouble(ACCOUNT_BALANCE),AccountInfoDouble(ACCOUNT_EQUITY));
    if(ContaBloqueada()){ g_extra="BLOQUEADO: CONTA REAL - este robô só opera em DEMO (mude InpAllowRealAccount por sua conta e risco)"; g_extraC=clrRed; }
    MathSrand((uint)(GetTickCount()^(uint)(ChartID()%1000000)));
@@ -257,7 +264,7 @@ void OnTimer()
    Core_Update(true);
    static ulong lastPoll=0, lastMin=0; ulong ms=GetTickCount64();
    if(ms-lastPoll>=(ulong)MathMax(InpTgPollSeg,2)*1000){ lastPoll=ms; TgPoll(); }
-   if(ms-lastMin>=30000){ lastMin=ms; ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); g_statusSvc=SvcStatus(); }
+   if(ms-lastMin>=30000){ lastMin=ms; ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); LembretesTimer(); UsuarioDesenha(); g_statusSvc=SvcStatus(); }
 }
 void OnTick()
 {
@@ -285,6 +292,7 @@ void OnTradeTransaction(const MqlTradeTransaction &tr,const MqlTradeRequest &rq,
    if(tr.type!=TRADE_TRANSACTION_DEAL_ADD) return;
    if(!HistoryDealSelect(tr.deal)) return;
    DisciplinaFechou(tr.deal);                       // qualquer trade da conta (seu ou do robô)
+   if(HistoryDealSelect(tr.deal)) TradeCtxGrava(tr.deal);   // v12.6: foto do painel na entrada
    if(!HistoryDealSelect(tr.deal)) return;
    if(HistoryDealGetInteger(tr.deal,DEAL_MAGIC)!=InpMagic) return;
    long en=HistoryDealGetInteger(tr.deal,DEAL_ENTRY);
@@ -297,12 +305,13 @@ void OnTradeTransaction(const MqlTradeTransaction &tr,const MqlTradeRequest &rq,
             StringFormat("%s;%s;%s;%d;%s;%s;%d;%.2f;%.2f;%.3f;%s",TimeToString(g_sigTime,TIME_DATE|TIME_MINUTES),_Symbol,g_sigDir==1?"compra":"venda",g_sigScore,Faixa(g_sigScore),
             g_sigSess,g_sigHour,g_sigRiskUSD,net,R,EnumToString((ENUM_DEAL_REASON)HistoryDealGetInteger(tr.deal,DEAL_REASON))));
       g_histLoad=0;
-      Notifica(StringFormat("Saiu do %s com %+.2f (%.2fR).",_Symbol,net,R));
+      Notifica(StringFormat("%sSaiu do %s com %+.2f (%.2fR): %s.",PorAutonomo()?"🤖 Autônomo: ":"",_Symbol,net,R,SaidaTxt(HistoryDealGetInteger(tr.deal,DEAL_REASON))));
+      if(g_sigScore>0) AdaptChecaMudou();
    }
 }
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam)
 {
    EngChartEvent(id,sparam);
-   if(id==CHARTEVENT_CHART_CHANGE) ObsDesenha();
+   if(id==CHARTEVENT_CHART_CHANGE){ ObsDesenha(); static uint ult=0; uint ms=GetTickCount(); if(ms-ult>300){ ult=ms; RotulosArruma(); ChartRedraw(0); } }
 }

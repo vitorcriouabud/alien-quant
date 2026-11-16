@@ -11,7 +11,7 @@ string   g_verArq="ALIEN_veredictos.csv";
 string   g_pausaArq="ALIEN_pausa.txt";
 string   g_verHdr="hora;simbolo;bid;veredito;sessao;d1;h4;h1;m15;m5;m1;nota;pts;entrada;stop;res15;res60;origem";
 
-bool TradeAtivo(){ return InpTradeEnabled && !g_cfgAssistente && !g_tradePausa; }
+bool TradeAtivo(){ return (InpTradeEnabled && !g_cfgAssistente && !g_tradePausa) || AutonomoAtivo(); }   // v12.6: autônomo só em DEMO
 
 void PausaLoad()
 {

@@ -116,7 +116,7 @@ bool VolteiPode()
    return GlobalVariableSetOnCondition(g,now,old);
 }
 void VolteiMarca(){ ArqGrava("ALIEN_voltei.txt",IntegerToString((long)TimeGMT())); }
-string ModoTxt(){ return TradeAtivo()?"operando na demo, dentro dos limites":(g_tradePausa?"pausado (você mandou pausar)":"modo assistente: só analiso e aviso, não mando ordem"); }
+string ModoTxt(){ return PorAutonomo()?"AUTÔNOMO na demo: decido e opero sozinho, dentro das regras":TradeAtivo()?"operando na demo, dentro dos limites":(g_tradePausa?"pausado (você mandou pausar)":"modo assistente: só analiso e aviso, não mando ordem"); }
 void ParadaInit()
 {
    g_ligadoBR=TimeToString(AgoraBR(),TIME_MINUTES);
@@ -147,7 +147,7 @@ void ParadaInit()
 string TgKbFixo()
 {
    return "{\"keyboard\":[[{\"text\":\"📰 Notícias\"},{\"text\":\"📊 Análise\"},{\"text\":\"🧭 Plano\"}],"
-          "[{\"text\":\"🗓️ Agenda\"},{\"text\":\"📸 Foto\"},{\"text\":\"ℹ️ Status\"}],[{\"text\":\"⏸️ Pausa\"},{\"text\":\"▶️ Retoma\"}]],"
+          "[{\"text\":\"🗓️ Agenda\"},{\"text\":\"📸 Foto\"},{\"text\":\"ℹ️ Status\"}],[{\"text\":\"🎓 Explica\"},{\"text\":\"📒 Trades\"},{\"text\":\"🔔 Alertas\"}],[{\"text\":\"⏸️ Pausa\"},{\"text\":\"▶️ Retoma\"}]],"
           "\"resize_keyboard\":true,\"is_persistent\":true}";
 }
 string TgKbSimNao(string sim,string cbSim,string nao,string cbNao)
@@ -169,6 +169,9 @@ string BotaoCmd(string t)
    if(o=="STATUS")   return "/status";
    if(o=="PAUSA")    return "/pausa";
    if(o=="RETOMA")   return "/retoma";
+   if(o=="EXPLICA")  return "/explica";
+   if(o=="TRADES")   return "/trades";
+   if(o=="ALERTAS")  return "/alertas";
    return "";
 }
 void PedeConfirmaPausa(bool pausar)
@@ -332,9 +335,10 @@ void ChatGeral(string pergunta)
 {
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
    string agora=CtxIA(pergunta,EhPerguntaAgenda(pergunta),EhPerguntaAbertura(pergunta));
-   string r=AIAskEx(SysGeral()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
+   string r=AIAskEx(SysGeral()+AcoesSysTxt()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=AISemVeredito(SemCamposCrus(r));
+   r=AcoesProcessa(r);
    if(!g_tgEmGrupo) FatoTalvez(pergunta);
    MemAdd(g_tgQuem,pergunta); MemAdd("Alier",r);
    SendMsg(r);
@@ -396,6 +400,7 @@ void ProTipoMarca(string tipo)
 void ProEnvia(string tipo,string key,int dir,double preco,string msg)
 {
    if(StringFind(g_proKeys,"|"+key+"|")>=0) return;
+   if(AlertaMudo(tipo)) return;                     // v12.6: o Vitor silenciou esse tipo
    if(g_proMudoAte>0 && TimeCurrent()<g_proMudoAte) return;
    if(!ProTipoLivre(tipo)) return;
    if(ProNaHora()>=MathMax(InpAlertasMaxHora,1)) return;
@@ -460,7 +465,7 @@ void ProativoBar()
    }
    // setup completo 7/7
    Plano b=MelhorPlano();
-   if(PlanoValido(b) && b.score>=InpScoreTrade)
+   if(PlanoValido(b) && b.score>=NotaAlertaMin())
    {
       int ok=0; for(int i=0;i<7;i++) if(b.pts[i]) ok++;
       if(ok>=7)

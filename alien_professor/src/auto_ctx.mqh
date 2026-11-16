@@ -80,7 +80,7 @@ string MercadoAgoraTxt(datetime gmt,bool semTick,datetime ultTickGmt)
 int TimeDayOfWeekX(datetime t){ MqlDateTime d; TimeToStruct(t,d); return d.day_of_week; }
 string RoboLinhaIA()
 {
-   string modo=TradeAtivo()?"operando (manda ordens, dentro dos limites)":(g_tradePausa?"pausado pelo /pausa (não manda ordem)":"modo assistente (só analisa e avisa, não manda ordem)");
+   string modo=PorAutonomo()?"AUTÔNOMO na demo (decide e opera sozinho, com as regras do robô; aprende pelos resultados)":TradeAtivo()?"operando (manda ordens, dentro dos limites)":(g_tradePausa?"pausado pelo /pausa (não manda ordem)":"modo assistente (só analisa e avisa, não manda ordem)");
    return StringFormat("ROBÔ: você é o Alier v%s no %s %s, conta %s, %s. Hoje: %d trades, %d stops, resultado $%+.2f. Posições abertas: %d.",
       APROF_VER,_Symbol,StringSubstr(EnumToString((ENUM_TIMEFRAMES)_Period),7),
       AccountInfoInteger(ACCOUNT_TRADE_MODE)==ACCOUNT_TRADE_MODE_DEMO?"DEMO":"REAL",modo,g_tradesHoje,g_stopsHoje,g_netHoje,PositionsTotal());
@@ -214,6 +214,10 @@ string CtxIA(string pergunta,bool agenda,bool semana)
    datetime utG=(ut>0?(datetime)(ut-SrvOffsetSeg()):0);
    datetime muda; int st=GradeOuro(gmt,muda);
    string s=MercadoAgoraTxt(gmt,semTick,utG)+"\n"+SessaoLinhaIA(gmt,semTick)+"\n"+RoboLinhaIA()+"\n";
+   // v12.6: trades de hoje, regras do Vitor, aprendizado ao vivo e o conhecimento do projeto
+   s+=TradesHojeIA()+AdaptCompactoIA();
+   if(!g_tgEmGrupo){ string rg=RegrasTxt(); if(StringFind(rg,"ainda não")<0) s+=rg; }
+   s+="CONHECIMENTO DO PROJETO (use só estes números):\n"+ConhecimentoTxt()+"\n";
    if(agenda) s+=AgendaSemanaIA(true);
    if(semana){ string w=SemanaIA(semTick && st==2); if(w!="") s+=w+"\n"; }
    return s+"\n";
@@ -222,7 +226,7 @@ string RegraContextoIA(bool abertura)
 {
    string r=" O bloco AGORA diz o dia da semana, a data e a hora de Brasília, se o mercado está aberto ou fechado e quando reabre: use exatamente isso e nunca calcule dia ou horário por conta própria (hoje é o dia escrito lá; não fale 'antes de domingo' se hoje é domingo). "
             "Você TEM o calendário econômico do MT5 (bloco AGENDA e campos de notícia): nunca diga que não vê notícias ou que não tem calendário; se a lista estiver vazia, diga que não tem notícia forte/média marcada. "
-            "Você sabe a versão, o modo da conta e os trades de hoje pelo bloco ROBÔ. "
+            "Você sabe a versão, o modo da conta e os trades de hoje pelos blocos ROBÔ e TRADES HOJE (cada trade com hora, lado, entrada, stop, alvo, saída e resultado): nunca diga que não guardou os trades. "
             "Não invente horário, preço, nível, dado econômico ou notícia que não esteja no contexto; se não estiver lá, diga que não sabe.";
    if(abertura) r+=" Se perguntarem o que esperar da abertura/semana: dê um plano curto de cenários (até 6 frases) usando só os níveis do bloco SEMANA (tipo 'se abrir acima de X...', 'se abrir abaixo de Y...'), diga que é observação, não certeza, cite a notícia forte mais próxima da AGENDA, e lembre do risco de gap e spread largo na abertura: melhor evitar os primeiros 15-30 min.";
    return r;
