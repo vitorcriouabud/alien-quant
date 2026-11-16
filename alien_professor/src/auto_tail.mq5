@@ -159,9 +159,10 @@ string SvcStatus()
 {
    string s=AIStatus();
    if(g_tgHint!="" && g_cfgTgChat=="") return g_tgHint;
-   string t = !InpUseTelegram ? "Telegram: desligado" : (StringLen(g_cfgTgToken)<=20 ? "Telegram: coloque o token" :
+   if(g_netAviso!="") return g_netAviso;          // v12.7: um aviso só, sem link nem instrução
+   string t = (StringLen(g_cfgTgToken)<=20 ? "Telegram: falta o token (rode o INSTALAR.bat do seu kit)" :
               (StringLen(g_cfgTgChat)==0 ? "Telegram: mande /start pro seu bot (eu me conecto sozinho)" :
-              (MQLInfoInteger(MQL_TESTER) ? "Telegram: não roda no testador" : (InpTgChat ? (g_tgMaster?"Telegram: chat ATIVO neste gráfico (/ajuda)":"Telegram: chat atendido por outro gráfico") : ""))));
+              (MQLInfoInteger(MQL_TESTER) ? "Telegram: não roda no testador" : (TgChatOn() ? (g_tgMaster?"Telegram: chat ATIVO neste gráfico (/ajuda)":"Telegram: chat atendido por outro gráfico") : ""))));
    if(s!="" && t!="") return s+"  |  "+t;
    return s+t;
 }
@@ -170,7 +171,8 @@ void TentaOperar()
    Plano b; int di;
    b=MelhorPlano(); di=(b.dir==1?0:1);
    // sinal = nota cruza o limite com plano válido (RR >= InpMinRR)
-   bool cruzou = (PlanoValido(b) && b.score>=InpScoreTrade && g_prevScore[di]<InpScoreTrade);
+   int nmin=NotaAlertaMin();   // v12.7: mais rígido (padrão 9)
+   bool cruzou = (PlanoValido(b) && b.score>=nmin && g_prevScore[di]<nmin);
    g_prevScore[0]=PlanoValido(g_pb)?g_pb.score:0; g_prevScore[1]=PlanoValido(g_ps)?g_ps.score:0;
    string blk=Bloqueio(b);
    if(!TradeAtivo())
@@ -186,7 +188,7 @@ void TentaOperar()
       if(TgOk() && InpTgFoto && !MQLInfoInteger(MQL_TESTER)) TgFoto(StringFormat("%s SINAL %s %d/10",_Symbol,b.dir==1?"COMPRA":"VENDA",b.score));
       return;
    }
-   g_status = blk!="" ? blk : (TemPosOuOrdem()?"em operação (1 por vez)":StringFormat("aguardando nota >= %d",InpScoreTrade));
+   g_status = blk!="" ? blk : (TemPosOuOrdem()?"em operação (1 por vez)":StringFormat("aguardando nota >= %d",NotaAlertaMin()));
    if(!cruzou) return;
    if(blk!=""){ Diario(b,"pulado: "+blk); return; }
    if(TemPosOuOrdem()){ Diario(b,"pulado: já tem posição"); return; }
@@ -264,7 +266,8 @@ void OnTimer()
    Core_Update(true);
    static ulong lastPoll=0, lastMin=0; ulong ms=GetTickCount64();
    if(ms-lastPoll>=(ulong)MathMax(InpTgPollSeg,2)*1000){ lastPoll=ms; TgPoll(); }
-   if(ms-lastMin>=30000){ lastMin=ms; ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); LembretesTimer(); UsuarioDesenha(); g_statusSvc=SvcStatus(); }
+   if(ms-lastMin>=30000){ lastMin=ms; if(StringLen(g_cfgTgToken)<=20 || (StringLen(g_cfgAI2Key)<=10 && StringLen(g_cfgGem2)<=10)) CfgLoad();   // v12.7: chave chegou depois? pega sozinho
+      ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); LembretesTimer(); UsuarioDesenha(); g_statusSvc=SvcStatus(); }
 }
 void OnTick()
 {
