@@ -1,0 +1,4 @@
+# Instaladores do Windows: CRLF no zip baixado do GitHub (ATUALIZAR.ps1 usa o zip do branch)
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
