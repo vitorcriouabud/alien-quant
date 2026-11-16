@@ -716,7 +716,7 @@ def test_grupo():
     ln = open(os.path.join(ROOT, "src", "auto_learn.mqh"), encoding="utf-8").read()
     ag = open(os.path.join(ROOT, "src", "auto_agente.mqh"), encoding="utf-8").read()
     hd = open(os.path.join(ROOT, "src", "auto_head.mq5"), encoding="utf-8").read()
-    assert '#define APROF_VER "12.5"' in hd
+    assert '#define APROF_VER "12.6"' in hd
     assert 'k=="telegram_grupo_id"' in tg and 'k=="grupo_alertas"' in tg
     assert 'c0=="/grupo"' in ch and "fromId==g_cfgTgChat" in ch and 'CfgSalva("telegram_grupo_id",chat)' in ch
     assert "if(g_tgEmGrupo) return SendJsonMsg(TgDestino(),text,\"\")" in ln      # sem teclado no grupo
@@ -751,6 +751,10 @@ def main():
     test_balao()
     test_grupo()
     test_contexto_v125()
+    test_acoes_v126()
+    test_ordens_v126()
+    test_autonomo_v126()
+    test_ensino_v126()
     print("ok all mocks")
     return 0
 
@@ -768,7 +772,8 @@ def botao_cmd(t):
     if len(t) > 24: return ""
     o = "".join(c for c in sem_acento_up(t) if "A" <= c <= "Z")
     return {"NOTICIAS":"/noticias","ANALISE":"/analise","PLANO":"/plano","FOTO":"/foto",
-            "STATUS":"/status","PAUSA":"/pausa","RETOMA":"/retoma","AGENDA":"/agenda"}.get(o, "")
+            "STATUS":"/status","PAUSA":"/pausa","RETOMA":"/retoma","AGENDA":"/agenda",
+            "EXPLICA":"/explica","TRADES":"/trades","ALERTAS":"/alertas"}.get(o, "")
 
 def test_botoes():
     assert botao_cmd("📰 Notícias") == "/noticias"
@@ -995,6 +1000,203 @@ def test_contexto_v125():
     assert "g_tgEmGrupo?" in geral                                       # no grupo não cita barbearia/vida pessoal
     assert "auto_ctx.mqh" in open(ROOT+"/tools/build.sh").read()
     print("ok contexto v12.5: dia da semana, reabertura EST 20:00 / EDT 19:00, agenda 7 dias, grupo sem pergunta pessoal")
+
+# ===================== v12.6 (explica, ações, ordens com Confirmar, autônomo na demo) =====================
+LER=["alertas","regras","explica","aula","guia","trades","podes","print","lembretes","aprendizado"]
+MUD=["alerta","alerta_remove","linha","linha_remove","limpo","painel","nota_alerta","mudo","som","pausa","retoma","regra","regra_remove","lembrete","simbolo","balao"]
+ORD=["ordem","fechar","stop","alvo"]
+def acao_politica(nome, dono):          # espelha AcaoPolitica
+    n=nome.strip().lower()
+    if n in LER: return 0
+    if n in MUD: return 0 if dono else 2
+    if n in ORD: return 3 if dono else 2
+    return 1
+def acoes_extrai(txt):                  # espelha AcoesExtrai (máx. 3)
+    out=[]; limpo=txt
+    while True:
+        a=limpo.find("[ACAO:")
+        if a<0: a=limpo.find("[AÇÃO:")
+        if a<0: break
+        b=limpo.find("]",a)
+        if b<0: limpo=limpo[:a]; break
+        corpo=limpo[a+6:b]; limpo=limpo[:a]+limpo[b+1:]
+        if len(out)>=3: continue
+        nm,_,pr=corpo.partition("|"); out.append((nm.strip().lower(),pr))
+    return out, limpo.strip()
+def ordens_permitidas(modo, demo, dono):
+    if not dono: return "dono"
+    m=modo.lower()
+    if m in ("off","0","nao"): return "off"
+    if m=="real": return ""
+    if not demo: return "real_bloqueada"
+    return ""
+def ordem_bloqueio(d, preco, sl, tp, lot, lote_max, soma_perdedora):
+    if d not in (1,-1): return "lado"
+    if lot<=0: return "lote"
+    if lote_max>0 and lot>lote_max+1e-9: return "teto"
+    if sl>0 and ((d==1 and sl>=preco) or (d==-1 and sl<=preco)): return "stop_lado"
+    if tp>0 and ((d==1 and tp<=preco) or (d==-1 and tp>=preco)): return "alvo_lado"
+    if soma_perdedora: return "preco_medio"
+    return ""
+def ordem_avisos(sl, risco, saldo, pct, stops, max_stops, net, perda_max, rr, regra):
+    a=[]
+    if sl<=0: a.append("sem_stop")
+    if saldo>0 and risco>0 and pct>0 and risco>pct/100*saldo: a.append("risco")
+    if max_stops>0 and stops>=max_stops: a.append("stops_limite")
+    elif stops>=2: a.append("stops")
+    if perda_max>0 and net-risco<-perda_max: a.append("perda")
+    if 0<rr<1.5: a.append("rr")
+    if regra: a.append("regra")
+    return a
+def ordem_confirmavel(id_, id_pend, t_pend, now, dono):
+    return dono and id_pend!="" and id_==id_pend and t_pend>0 and 0<=now-t_pend<=60
+def autonomo_permitido(cfg, demo): return cfg and demo
+def adapta_limiar(base, n, media, min_n):
+    if n<min_n: return base, False
+    if media<0: return base, True
+    if media<0.10: return min(base+1,10), False
+    return base, False
+
+def _corpo(src, assinatura):
+    i=src.find(assinatura); assert i>=0, assinatura
+    j=src.find("\n}\n", i); return src[i:j]
+
+def test_acoes_v126():
+    ac=_src("auto_acoes.mqh"); ch=_src("auto_chat.mqh")
+    # lista fechada: espelho == fonte
+    pol=_corpo(ac,"int AcaoPolitica(")
+    for lst in (LER,MUD,ORD):
+        for n in lst: assert '"'+n+'"' in pol, n
+    # fora da lista = recusado; ordem/estado de quem não é dono = recusado
+    for bad in ["comprar_agora","deletar","shell","executa","close_all","fechar_tudo","ordem_direta",""]:
+        assert acao_politica(bad,True)==1, bad
+    for n in MUD: assert acao_politica(n,False)==2 and acao_politica(n,True)==0
+    for n in ORD: assert acao_politica(n,False)==2 and acao_politica(n,True)==3   # ordem nunca roda direto
+    for n in LER: assert acao_politica(n,False)==0
+    acs,l=acoes_extrai("Fechado, te aviso. [ACAO:alerta|3900] [ACAO:limpo|on]")
+    assert acs==[("alerta","3900"),("limpo","on")] and l=="Fechado, te aviso.", (acs,l)
+    acs,_=acoes_extrai("[ACAO:a][ACAO:b][ACAO:c][ACAO:d]"); assert len(acs)==3
+    acs,l=acoes_extrai("ok [ACAO:ordem|compra|0.05|3880|3900"); assert acs==[] and l=="ok"
+    # a etiqueta de ordem só monta o resumo com botão (OrdemDeAcao -> OrdemPropoe), não executa
+    ex=_corpo(ac,"string AcaoExecuta(")
+    assert "if(pol==1)" in ex and "if(pol==2) return NaoDono();" in ex and "if(pol==3) return OrdemDeAcao(nome,params);" in ex
+    assert "AcaoPolitica(nome,TgDono())" in ex and "ALIEN_acoes_log.csv" in ex
+    # dono: privado, ou from.id do Vitor no grupo
+    assert 'bool TgDono(){ if(!g_tgEmGrupo) return true; return g_tgFromId!="" && g_tgFromId==g_cfgTgChat; }' in ac
+    assert "TgContexto(chat,grupo,quem,fromId)" in ch and "g_tgFromId=fromId" in ch
+    th=_corpo(ch,"void TgHandle(")
+    g=th.find("if(!TgDono() && (cmd==\"/pausa\""); assert g>=0 and th.find('cmd=="/pausa_ok"')>g
+    for c in ['"/retoma_ok"','"/linha"','"/limpo"','"/regra"','"/lembrete"','"/mudo"','"/simbolo"']: assert c in th[g:g+600], c
+    # IA só ganha etiquetas no texto livre; no grupo, quem não é dono não recebe a lista
+    assert "SysChatLivre()+AcoesSysTxt()" in ch and "AcoesProcessa(r)" in ch and "AcoesSysTxt()" in _src("auto_agente.mqh")
+    assert 'if(!TgDono()) return " Quem escreveu não é o Vitor' in ac
+    print("ok ações v12.6: lista fechada, estranho recusado, não-dono não muda nada, ordem só com Confirmar")
+
+def test_ordens_v126():
+    od=_src("auto_ordens.mqh"); ch=_src("auto_chat.mqh")
+    # quem pode
+    assert ordens_permitidas("demo",True,False)=="dono"
+    assert ordens_permitidas("demo",False,True)=="real_bloqueada"          # conta real bloqueada com telegram_ordens=demo
+    assert ordens_permitidas("off",True,True)=="off"
+    assert ordens_permitidas("real",False,True)=="" and ordens_permitidas("demo",True,True)==""
+    po=_corpo(od,"string OrdensPermitidas(")
+    assert 'if(!dono)' in po and 'if(m=="real") return "";' in po and "if(!contaDemo)" in po
+    # sem trava: limites do dia e falta de stop são só aviso
+    assert ordem_bloqueio(1,3890,0,0,0.05,0,False)==""                     # sem stop: deixa (avisa)
+    assert "sem_stop" in ordem_avisos(0,0,1000,1,0,0,0,0,0,"")
+    av=ordem_avisos(3880,50,1000,1,3,2,-80,90,1.2,"não operar na Ásia")
+    assert av==["risco","stops_limite","perda","rr","regra"], av
+    assert ordem_avisos(3880,5,1000,1,0,0,0,0,2,"")==[]
+    assert "stops" in ordem_avisos(3880,5,1000,1,2,0,0,0,2,"")             # 'já foram 2 stops hoje' mesmo sem limite
+    bl=_corpo(od,"string OrdemBloqueio(")
+    for w in ["g_pare","g_stopsHoje","netHoje","perda"]: assert w not in bl, w   # limite do dia NÃO bloqueia ordem manual
+    # bloqueios duros
+    assert ordem_bloqueio(1,3890,3895,0,0.05,0,False)=="stop_lado" and ordem_bloqueio(-1,3890,3880,0,0.05,0,False)=="stop_lado"
+    assert ordem_bloqueio(1,3890,3880,3885,0.05,0,False)=="alvo_lado"
+    assert ordem_bloqueio(1,3890,3880,3900,0.05,0,True)=="preco_medio"     # sem martingale/preço médio
+    assert ordem_bloqueio(1,3890,3880,3900,0.5,0.1,False)=="teto" and ordem_bloqueio(1,3890,3880,3900,0.5,0,False)==""
+    # confirmação: sem Confirmar não executa; vence em 60 s; só o dono
+    assert not ordem_confirmavel("123","",100,110,True)
+    assert not ordem_confirmavel("123","999",100,110,True)
+    assert not ordem_confirmavel("123","123",100,161,True)
+    assert not ordem_confirmavel("123","123",100,110,False)
+    assert ordem_confirmavel("123","123",100,160,True)
+    oc=_corpo(od,"bool OrdemConfirmavel("); assert "ORD_SEG" in oc and "dono" in oc
+    assert "#define ORD_SEG 60" in od
+    # a execução só existe atrás do botão
+    assert od.count("OrdemExecuta(")==2 and "SendMsg(OrdemExecuta(o));" in _corpo(od,"void OrdemConfirma(")
+    ex=_corpo(od,"string OrdemExecuta(")
+    assert od.count("g_trTg.Buy(")==1 and "g_trTg.Buy(" in ex and od.count("g_trTg.PositionClose(")==2
+    for f in ["g_trTg.Buy(","g_trTg.Sell(","g_trTg.PositionClose","g_trTg.PositionModify"]:
+        assert ch.count(f)==0 and _src("auto_acoes.mqh").count(f)==0
+    assert "OrdemConfirmavel(id,g_op.id,g_op.t,TimeLocal(),TgDono())" in od and "o.t=TimeLocal()" in od
+    assert 'TgKbSimNao("✅ Confirmar","/ordem_ok "+o.id,"❌ Cancelar","/ordem_nao "+o.id)' in od
+    assert 'if(!TgDono()){ SendMsg("Ordem só o Vitor pode mandar' in ch
+    assert "ALIEN_ordens_telegram.csv" in od and od.count("OrdemLog(")>=8 and "string RetcodeTxt(" in od and "10019" in od and "10027" in od
+    # magic próprio (o robô não gerencia/fecha as ordens manuais)
+    assert "SetExpertMagicNumber(InpMagic+1)" in od
+    # config
+    tg=_src("auto_tg.mqh")
+    assert 'g_cfgTgOrdens="demo"' in tg and 'k=="max_stops_dia"' in tg and 'k=="perda_max_dia"' in tg and "g_cfgMaxStopsDia=0" in tg
+    print("ok ordens v12.6: só dono, Confirmar 60 s, real bloqueada em demo, limites só avisam, sem preço médio")
+
+def test_autonomo_v126():
+    od=_src("auto_ordens.mqh"); tl=_src("auto_tail.mq5"); ln=_src("auto_learn.mqh")
+    assert autonomo_permitido(True,True) and not autonomo_permitido(True,False) and not autonomo_permitido(False,True)
+    assert "bool AutonomoAtivo(){ return !g_tradePausa && AutonomoPermitido(g_cfgAutonomo,ContaDemo()); }" in od
+    assert "ACCOUNT_TRADE_MODE_DEMO" in _corpo(od,"bool ContaDemo(")
+    assert "|| AutonomoAtivo()" in ln
+    fil=_corpo(od,"string AutonomoFiltro(")
+    assert 'if(!ContaDemo()) return' in fil and "g_mtf[2]!=b.dir" in fil and "b.stop<=0" in fil
+    to=_corpo(tl,"void TentaOperar(")
+    assert to.find("AutonomoFiltro(b)")>to.find("string blk=Bloqueio(b)") and "RRMinAlvo()" in to and "TemPosOuOrdem()" in to
+    assert "vetoAuto" in to and 'g_aiVeredito!=(b.dir==1?"COMPRA":"VENDA")' in to
+    # aprendizado: amostra mínima, nunca baixa da base, nunca mexe em risco
+    for base in range(5,11):
+        for n in (0,5,19,20,50):
+            for m in (-1.0,-0.01,0.0,0.05,0.2,1.0):
+                lim,des=adapta_limiar(base,n,m,20)
+                assert lim>=base and lim<=max(base,10)
+                if n<20: assert lim==base and not des               # amostra pequena: não mexe
+    assert adapta_limiar(7,30,-0.2,20)==(7,True) and adapta_limiar(7,30,0.05,20)==(8,False) and adapta_limiar(7,30,0.3,20)==(7,False)
+    al=_corpo(od,"int AdaptaLimiar(")
+    for w in ["lot","Risk","risco","InpRisk"]: assert w not in al, w
+    assert "if(n<minN) return base;" in al and "MathMin(base+1,10)" in al
+    assert "MathMax(20,InpAprenderMinN)" in od
+    assert "ALIEN_decisoes.csv" in od and "DecisaoLog(b,acao);" in tl and "AdaptChecaMudou();" in tl
+    assert '"/reset_aprendizado"' in od and "desfaz" in od and '"/autonomo"' in od
+    on=_corpo(od,"bool OrdensCmd(")
+    assert on.find('if(!ContaDemo()){ SendMsg("🚫 Essa conta é REAL') < on.find('CfgSalva("autonomo","demo")')
+    print("ok autônomo v12.6: só DEMO (checa toda vez), filtros, IA só veta, aprendizado com amostra mínima e sem mexer em risco")
+
+def test_ensino_v126():
+    ac=_src("auto_acoes.mqh"); ch=_src("auto_chat.mqh"); pn=_src("painel.mqh"); cx=_src("auto_ctx.mqh")
+    guia=open(ROOT+"/GUIA_DO_GRAFICO.md",encoding="utf-8").read()
+    for w in ["Vazio de preço","Bloco de ordens","Mudança de direção","Rompimento de estrutura","Varrida","Preço médio da sessão","Preço de maior volume","STOP","ALVO","modo limpo","Confluência"]:
+        assert w.lower() in guia.lower() and w.lower() in _corpo(ac,"string GuiaTxt(").lower(), w
+    ex=_corpo(ac,"string ExplicaTxt(")
+    for w in ["g_niv","g_bos","g_fvg","g_fvgH1","g_obs","g_engVWAP","MelhorPlano","g_engKZ","g_efBuy","AlertaLista"]: assert w in ex, w
+    for t in ["fvg","liquidez","varrida","bos","choch","bloco","vwap","killzone","stop","rr","vela","disciplina"]: assert t in ac
+    assert '"/explica"' in ac and '"/aula"' in ac and '"/guia"' in ac and '"/trades"' in ac and '"/podes"' in ac
+    assert "EhPedidoExplica(text)" in ch and "EhPedidoTrades(text)" in ch
+    # trades: histórico real da conta + foto do painel na entrada + no contexto da IA
+    assert "HistorySelectByPosition" in ac and "DEAL_SL" in ac and "DEAL_REASON" in ac and "TradeCtxGrava(tr.deal)" in _src("auto_tail.mq5")
+    assert "TradesHojeIA()" in cx and "nunca diga que não guardou os trades" in cx
+    # gráfico limpo
+    assert "void RotulosArruma()" in pn and "OBJ_NO_PERIODS" in pn and "ChartXYToTimePrice" in pn and "RotulosArruma();" in _src("core.mqh")
+    assert "InpArrumarRotulos    = true" in _src("core.mqh")
+    # conhecimento: só números que estão nos arquivos do projeto
+    k=open(ROOT+"/kit/ALIEN_conhecimento.txt",encoding="utf-8").read()
+    docs="".join(open(ROOT+"/"+f,encoding="utf-8").read() for f in ["TESTE_SINAIS.md","DIARIO_DO_PROJETO_2026-11-15.md","conhecimento/LOGICA_DO_PRECO_REGRAS.md",
+          "conhecimento/ALIER_PROMPT_CONHECIMENTO.txt","conhecimento/HIPOTESES_LAB.md","MELHORIAS_30.md","conhecimento/FONTES_DO_CONHECIMENTO.md"]).replace("−","-")
+    nums=set(re.findall(r'[-+]?\d+[.,]\d+%?',k))
+    falta=[n for n in nums if n not in docs and n.lstrip("+-") not in docs]
+    assert not falta and "-0,32" in nums and "14,5%" in nums, falta
+    assert "ConhecimentoTxt()" in cx and '"@@CONHECIMENTO@@"' in ac and "ALIEN_conhecimento.txt" in open(ROOT+"/kit/INSTALAR.ps1").read()
+    assert "AdaptCompactoIA()" in cx
+    # teclado novo
+    assert botao_cmd("🎓 Explica")=="/explica" and botao_cmd("📒 Trades")=="/trades" and botao_cmd("🔔 Alertas")=="/alertas"
+    print("ok ensino v12.6: /explica com os objetos do EA, aulas, guia, trades, gráfico limpo, conhecimento sem número inventado")
 
 if __name__ == "__main__":
     sys.exit(main())
