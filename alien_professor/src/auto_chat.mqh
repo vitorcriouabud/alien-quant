@@ -608,7 +608,7 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
       return;
    }
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
-   string sys=(plano?SysChatAnalise():SysChatLivre())+GrupoNota();
+   string sys=(plano?SysChatAnalise():SysChatLivre()+AcoesSysTxt())+GrupoNota();
    if(EhReclamaRepete(pergunta)) sys+=" O Vitor reclamou que você está repetindo. NÃO peça desculpa e cole o mesmo texto. Responda só o que falta, de outro jeito, bem curto.";
    bool abert=EhPerguntaAbertura(pergunta) || MercadoFechado();
    int tok=plano?600:(EhPerguntaAbertura(pergunta)?480:350);
@@ -616,8 +616,9 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
    string r=AIAskEx(sys,MemTxt()+CtxIA(pergunta,true,abert)+"CONTEXTO DO MERCADO (JSON):\n"+ctx+"\n\n"+QuemMsg()+":\n"+pergunta,tok,false,plano,temp);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=SemCamposCrus(r);
-   if(plano) r=EdgeSePreciso(r);
-   else r=SoRespostaCurta(r,pergunta);
+   string acNm[],acPr[],acLimpo; bool temAcao=false;
+   if(plano){ AcoesExtrai(r,acNm,acPr,acLimpo); r=EdgeSePreciso(acLimpo); }
+   else { temAcao=(StringFind(r,"[ACAO:")>=0); if(temAcao){ r=AcoesProcessa(r); } else r=SoRespostaCurta(r,pergunta); }
    if(plano && StringLen(r)>900)
    {
       string tail="";
@@ -674,6 +675,7 @@ string StatusTxt()
    string fx[4]={"0-4","5-6","7-8","9-10"};
    for(int f=0;f<4;f++){ int nn; double ww,aa; HStat(fx[f],0,"",nn,ww,aa); if(nn>0) s+=StringFormat("  nota %s: %d trades, acerto %.0f%%, R %+.2f\n",fx[f],nn,ww,aa); }
    s+="Trava do histórico: "+(InpAprenderDesativar?"ligada":"desligada")+".";
+   s+="\nAutônomo: "+(AutonomoAtivo()?"LIGADO (demo)":(g_cfgAutonomo&&!ContaDemo()?"bloqueado (conta REAL)":"desligado"))+". Ordens pelo Telegram: "+g_cfgTgOrdens+(g_modoLimpo?". Modo limpo ligado":"")+".";
    return s;
 }
 string NoticiasTxt()
@@ -700,6 +702,11 @@ string AjudaTxt()
           "/foto - print com uma explicação curtinha\n"
           "/memoria - o que eu lembro de você  |  /esquece - apago\n"
           "/grupo - (no grupo, só o Vitor) libera o grupo pra falar comigo\n"
+          "🆕 /explica - o que é cada linha do gráfico | /aula fvg | /guia - legenda\n"
+          "🆕 /trades - seus trades de hoje e o porquê | /podes - tudo que eu sei fazer\n"
+          "🆕 Me dá ordens com suas palavras: \"me avisa em 3900\", \"modo limpo\", \"não me deixa operar na Ásia\", \"me lembra 10:30\"\n"
+          "🆕 Ordem (só você, com Confirmar): \"compra 0.05 stop 3880 alvo 3900\", \"fecha metade\", \"stop no zero\"\n"
+          "🆕 /autonomo on|off - eu opero sozinho na DEMO e aprendo | /aprendizado | /reset_aprendizado\n"
           "Pode escrever sobre qualquer assunto, mandar áudio 🎤 ou foto 📷 (até print de gráfico de outro lugar). Eu também te aviso sozinho quando varrer liquidez, mudar a estrutura ou chegar num bloco importante.";
 }
 void TgHandle(string chat,string text)
@@ -721,6 +728,11 @@ void TgHandle(string chat,string text)
    if(!iscmd){ string bc=BotaoCmd(text); if(bc!=""){ cmd=bc; args=""; iscmd=true; } }
    Print("Telegram: comando ",cmd!=""?cmd:"(texto livre)",g_tgEmGrupo?" (grupo)":"");
    if(!iscmd && !g_tgEmGrupo && DisciplinaMotivo(text)) return;
+   // v12.6: o que muda estado no robô = só o dono (privado ou o from.id do Vitor no grupo)
+   if(!TgDono() && (cmd=="/pausa"||cmd=="/retoma"||cmd=="/pausa_ok"||cmd=="/retoma_ok"||cmd=="/esquece"||(cmd=="/alerta" && args!="")||cmd=="/linha"||cmd=="/limpo"||cmd=="/painel"||cmd=="/regra"||cmd=="/lembrete"||cmd=="/mudo"||cmd=="/som"||cmd=="/nota"||cmd=="/simbolo"||cmd=="/símbolo"||cmd=="/disc"))
+   { SendMsg(NaoDono()); return; }
+   if(iscmd && OrdensCmd(cmd,args)) return;
+   if(iscmd && AcoesCmd(cmd,args)) return;
    if(cmd=="/grupo"){ SendMsg(g_tgEmGrupo?"Este grupo já tá liberado ✅ Me chama com /comando, marcando @"+BotUser()+" ou respondendo uma mensagem minha.":"Pra liberar um grupo: me adiciona nele e manda /grupo lá dentro (só você, Vitor)."); return; }
    if(cmd=="/start" || cmd=="/ajuda" || cmd=="/help"){ SendMsgKb(AjudaTxt()); return; }
    if(cmd=="/status"){ SendMsg(StatusTxt()); return; }
@@ -734,7 +746,7 @@ void TgHandle(string chat,string text)
    if(cmd=="/plano"){ SendMsg(EdgeSePreciso(PlanoTxt())); return; }
    if(cmd=="/niveis" || cmd=="/níveis"){ SendMsg(NiveisTxt()); return; }
    if(cmd=="/diario" || cmd=="/diário"){ SendMsg(DiarioTxt()); return; }
-   if(cmd=="/aprendizado"){ SendMsg(AprendizadoTxt()); return; }
+   if(cmd=="/aprendizado"){ SendMsg(AprendizadoTxt()+"\n\n"+AdaptTabelaTxt()); return; }
    if(cmd=="/risco"){ SendMsg(RiscoTxt()); return; }
    if(cmd=="/pausa"){ PedeConfirmaPausa(true); return; }
    if(cmd=="/retoma"){ PedeConfirmaPausa(false); return; }
@@ -744,7 +756,7 @@ void TgHandle(string chat,string text)
    {
       double px=StringToDouble(args);
       if(px<=0) SendMsg("Manda assim: /alerta 3870  (preço maior que zero). Alertas ativos: "+AlertaLista());
-      else { AlertaAdd(px); SendMsg("Beleza, alerta em "+Fmt(px)+" salvo. Ativos: "+AlertaLista()); }
+      else { AlertaAdd(px); UsuarioDesenha(); SendMsg("Beleza, alerta em "+Fmt(px)+" salvo. Ativos: "+AlertaLista()); }
       return;
    }
    if(cmd=="/analise" || cmd=="/análise")
@@ -758,9 +770,15 @@ void TgHandle(string chat,string text)
          return;
       }
       if(args!=""){ SendMsg("Não achei esse símbolo/tempo. Exemplos: /analise H4  |  /analise XAUUSD M15  |  /analise US500 H1"); return; }
+      if(g_simFoco!="" && TemCotacao(g_simFoco)){ SendMsg("Deixa eu olhar o "+g_simFoco+"..."); ChatIA("Olha o "+g_simFoco+" no "+TfNome(InpTFExec)+" com os números do contexto, no seu estilo informal, e fecha com VEREDITO.","ANÁLISE "+g_simFoco,g_simFoco,InpTFExec,true,true); return; }
       SendMsg("Deixa eu olhar o "+_Symbol+"..."); ChatIA("Olha o gráfico de agora com os números do contexto, no seu estilo informal, e fecha com VEREDITO.","ANÁLISE "+_Symbol,"",PERIOD_CURRENT,false,true); return;
    }
    if(iscmd){ SendMsg("Não peguei esse comando.\n\n"+AjudaTxt()); return; }
+   // v12.6: pedidos em texto livre que o robô resolve sem IA
+   if(EhPedidoExplica(text)){ MemAdd(g_tgQuem,text); ExplicaEnvia(); return; }
+   if(EhPedidoTrades(text)){ MemAdd(g_tgQuem,text); TradesEnvia(true); return; }
+   if(EhPedidoPodes(text)){ MemAdd(g_tgQuem,text); SendMsg(PodesTxt()); return; }
+   { OrdemPend op; if(OrdemDeTexto(text,op) && op.tipo>0){ MemAdd(g_tgQuem,text); if(!TgDono()){ SendMsg("Ordem só o Vitor pode mandar 🙏"); return; } OrdemPropoe(op); return; } }
    if(EhSoNoticia(text)){ MemAdd(g_tgQuem,text); SendMsg(NoticiasTxt()); return; }
    string fsy; ENUM_TIMEFRAMES ftf;
    if(ParseAlvo(text,false,fsy,ftf)) ChatIA(text,"",fsy,ftf);
@@ -816,8 +834,8 @@ bool CmdDeOutroBot(string t,string user)
    string suf=StringSubstr(head,at+1), u=user; StringToLower(suf); StringToLower(u);
    return suf!=u;
 }
-void TgContexto(string chat,bool grupo,string quem){ g_tgReply=chat; g_tgEmGrupo=grupo; g_tgQuem=grupo?(quem!=""?quem:"alguém do grupo"):"Vitor"; }
-void TgContextoLimpa(){ g_tgReply=""; g_tgEmGrupo=false; g_tgQuem="Vitor"; }
+void TgContexto(string chat,bool grupo,string quem,string fromId=""){ g_tgReply=chat; g_tgEmGrupo=grupo; g_tgFromId=fromId; g_tgQuem=grupo?(quem!=""?quem:"alguém do grupo"):"Vitor"; }
+void TgContextoLimpa(){ g_tgReply=""; g_tgEmGrupo=false; g_tgFromId=""; g_tgQuem="Vitor"; }
 // renova a trava de quem lê o chat durante respostas demoradas (IA), pra outro gráfico não pegar a vez
 void TgMasterRenova(){ if(g_tgMaster && GlobalVariableCheck("APROF_TGM_ID") && GlobalVariableGet("APROF_TGM_ID")==g_inst) GlobalVariableSet("APROF_TGM_T",(double)TimeLocal()); }
 // offset mais novo gravado por qualquer gráfico (evita responder duas vezes a mesma mensagem)
@@ -882,7 +900,7 @@ void TgPoll()
                g_cfgGrupo=chat; CfgSalva("telegram_grupo_id",chat);
                Print("ALIEN: grupo liberado e salvo em MQL5\\Files\\ALIEN_config.txt");
                if(mudou) TgEstadoSave(); mudou=false;
-               TgContexto(chat,true,quem);
+               TgContexto(chat,true,quem,fromId);
                SendMsg("Pronto, liberei este grupo ✅ Aqui eu respondo comandos (/status, /analise...), quando me marcam (@"+BotUser()+") ou quando respondem uma mensagem minha. Os avisos automáticos continuam só no privado do Vitor.");
                TgContextoLimpa();
             }
@@ -897,13 +915,13 @@ void TgPoll()
             // a última versão da foto é a maior
             string ph=StringSubstr(seg,fp); int fe=StringFind(ph,"]"); if(fe>0) ph=StringSubstr(ph,0,fe);
             string fid=""; int q=0; while(true){ int z=StringFind(ph,"\"file_id\":\"",q); if(z<0) break; fid=JDecode(ph,z+10); q=z+1; }
-            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); FotoHandle(chat,fid,SemMencao(cap,BotUser())); TgContextoLimpa(); TgMasterRenova(); }
+            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem,fromId); FotoHandle(chat,fid,SemMencao(cap,BotUser())); TgContextoLimpa(); TgMasterRenova(); }
             continue;
          }
          if(vp>=0)
          {
             string fid=JStrKey(StringSubstr(seg,vp),"file_id");
-            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); VozHandle(chat,fid); TgContextoLimpa(); TgMasterRenova(); }
+            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem,fromId); VozHandle(chat,fid); TgContextoLimpa(); TgMasterRenova(); }
             continue;
          }
          text=JStrKey(seg,"text");
@@ -918,7 +936,7 @@ void TgPoll()
             if(text=="") text="oi";
          }
       }
-      if(chat!="" && text!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); TgHandle(chat,text); TgContextoLimpa(); TgMasterRenova(); }
+      if(chat!="" && text!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem,fromId); TgHandle(chat,text); TgContextoLimpa(); TgMasterRenova(); }
    }
    if(mudou) TgEstadoSave();
 }
@@ -930,7 +948,7 @@ void TgPreAlerta()
    LoadNews(); datetime now=TimeTradeServer();
    for(int i=0;i<ArraySize(g_news);i++)
    {
-      if(g_news[i].imp<3 || StringFind(InpPreAlertaMoedas,g_news[i].cur)<0) continue;
+      if(g_news[i].imp<3 || StringFind(InpPreAlertaMoedas,g_news[i].cur)<0 || AlertaMudo("noticia")) continue;
       long d=(long)(g_news[i].t-now); if(d<=0 || d>InpPreAlertaMin*60) continue;
       string key="|"+IntegerToString((long)g_news[i].id)+"|"; if(StringFind(g_alertados,key)>=0) continue;
       g_alertados+=IntegerToString((long)g_news[i].id)+"|"; TgEstadoSave();

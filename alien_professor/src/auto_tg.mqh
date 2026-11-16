@@ -4,8 +4,11 @@
 string g_cfgTgToken="", g_cfgTgChat=""; bool g_cfgAssistente=false; string g_cfgOrigem="parâmetros";
 // v12.4: grupo do Telegram (opcional). telegram_grupo_id fica no ALIEN_config.txt; o Vitor manda /grupo no grupo pra liberar.
 string g_cfgGrupo=""; bool g_cfgGrupoAlertas=false;
+// v12.6: ordens pelo Telegram (off/demo/real), autônomo na demo, avisos de limite (0 = sem limite)
+string g_cfgTgOrdens="demo"; bool g_cfgAutonomo=false; double g_cfgOrdRiscoPct=1.0, g_cfgOrdLoteMax=0, g_cfgPerdaMaxDia=0; int g_cfgMaxStopsDia=0;
 // para onde vai a resposta da mensagem que está sendo atendida ("" = chat privado do dono)
 string g_tgReply=""; bool g_tgEmGrupo=false; string g_tgQuem="Vitor";
+string g_tgFromId="";   // v12.6: from.id de quem mandou (dono = mesmo número do chat privado do Vitor)
 string CfgArq(){ return "ALIEN_config.txt"; }
 // grava/troca uma linha "chave=valor" no ALIEN_config.txt (mantém o resto)
 void CfgSalva(string chave,string valor)
@@ -23,6 +26,7 @@ void CfgSalva(string chave,string valor)
 void CfgLoad()
 {
    g_cfgTgToken=InpTelegramToken; g_cfgTgChat=InpTelegramChatId; AICfgInit(); g_cfgAssistente=false; g_cfgOrigem="parâmetros"; g_cfgGrupo=""; g_cfgGrupoAlertas=false;
+   g_cfgTgOrdens="demo"; g_cfgAutonomo=false; g_cfgOrdRiscoPct=1.0; g_cfgOrdLoteMax=0; g_cfgPerdaMaxDia=0; g_cfgMaxStopsDia=0;
    int h=FileOpen(CfgArq(),FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
    if(h==INVALID_HANDLE) return;
    int n=0;
@@ -40,6 +44,12 @@ void CfgLoad()
       else if(k=="xai_chave"){ g_cfgAIKey=v; n++; }
       else if(k=="telegram_grupo_id"){ g_cfgGrupo=v; n++; }
       else if(k=="grupo_alertas"){ g_cfgGrupoAlertas=(v=="1" || v=="sim" || v=="true"); n++; }
+      else if(k=="telegram_ordens"){ g_cfgTgOrdens=v; StringToLower(g_cfgTgOrdens); n++; }
+      else if(k=="autonomo"){ string m=v; StringToLower(m); g_cfgAutonomo=(m=="demo"||m=="on"||m=="1"||m=="sim"); n++; }
+      else if(k=="ordem_risco_aviso_pct"){ g_cfgOrdRiscoPct=StringToDouble(v); n++; }
+      else if(k=="ordem_lote_max"){ g_cfgOrdLoteMax=StringToDouble(v); n++; }
+      else if(k=="max_stops_dia"){ g_cfgMaxStopsDia=(int)StringToInteger(v); n++; }
+      else if(k=="perda_max_dia"){ g_cfgPerdaMaxDia=StringToDouble(v); n++; }
       else if(k=="modo"){ string m=v; StringToLower(m); g_cfgAssistente=(StringFind(m,"assist")==0); n++; }
    }
    FileClose(h);
