@@ -1,5 +1,44 @@
 # Mudanças do ALIEN PROFESSOR
 
+## Versão 12.6 — O Alier te explica o gráfico, obedece, mostra seus trades e opera na demo (15/11/2026)
+**Entender o gráfico**
+- Mande **/explica** ou escreva "o que é essa linha?" / "me explica o gráfico". Ele manda o print e explica, em português simples, cada coisa desenhada agora (com o preço): níveis, vazios de preço, blocos, varridas, VWAP, STOP/ALVO do plano, setas, seus alertas.
+- **/aula fvg** (ou liquidez, varrida, bos, choch, bloco, vwap, killzone, stop, rr, vela, disciplina): uma aula curta com exemplo do ouro.
+- **/guia**: legenda das cores. O mesmo guia vem no kit: **GUIA_DO_GRAFICO.md**.
+- Gráfico mais limpo: as etiquetas não ficam mais uma em cima da outra (ele afasta ou esconde a de menor importância). **/limpo on** deixa só o plano, seus alertas e as zonas mais perto do preço. **/painel ia off** (ou niveis, confluencia, conta, tudo, mini) esconde partes do painel.
+
+**Dar ordem pra IA**
+- Pode falar normal: "me avisa quando chegar 3900", "desenha uma linha em 3880", "deixa o gráfico limpo", "não quero alerta de notícia", "me lembra às 9h de olhar o gráfico", "minha regra: não operar na Ásia", "manda print". Ele faz e confirma o que fez.
+- Ele só faz coisas de uma lista fechada. Pedido fora da lista ele diz que não faz e mostra o que pode (**/podes**).
+- Quem muda alguma coisa (alerta, pausa, regra, ordem) é **só você**: no privado, ou no grupo com a sua conta. No grupo os outros só perguntam e veem (pausa/retoma no grupo agora também é só sua).
+- Comandos novos: /alertas, /regra, /regras, /lembrete, /lembretes, /linha, /mudo, /som, /nota, /simbolo, /print.
+- Quando um trade quebra uma regra sua (ex.: entrou na Ásia), ele avisa na hora.
+
+**Seus trades**
+- **/trades** ou "meus trades hoje": lista de hoje com hora de Brasília, ativo, compra/venda, lote, entrada, stop, alvo, saída e resultado, e compara com o que o painel mostrava na hora que você entrou (nota, tempos, sessão). A IA explica o porquê em poucas linhas. A IA também passa a saber dos seus trades de hoje em qualquer conversa.
+
+**Ordens pelo Telegram (só você)**
+- "compra 0.05 stop 3880 alvo 3900", "vende", "fecha tudo", "fecha metade", "move stop pro zero", "muda stop para 3885", "alvo para 3910".
+- Ele mostra um resumo (ativo, compra/venda, lote, stop, alvo, risco em $ e % da conta, alvo/risco) com os botões **✅ Confirmar** e **❌ Cancelar**. Só executa se você tocar Confirmar em até 60 segundos. Depois diz se entrou, fechou ou foi recusada, com o motivo em português.
+- **Sem travas**: limite de stops ou de perda do dia **não bloqueia** sua ordem, só avisa ("⚠️ já foram 2 stops hoje"). Esqueceu o stop? Ele sugere um pelo plano; se mesmo assim quiser sem stop, avisa uma vez e deixa.
+- O que ele não faz: somar na posição que está perdendo (preço médio / martingale) e stop do lado errado.
+- No ALIEN_config.txt: telegram_ordens=demo (padrão, só conta demo) | real (você decide) | off. Opcionais: max_stops_dia e perda_max_dia (0 = sem limite, só aviso), ordem_lote_max (teto de lote), ordem_risco_aviso_pct (avisa acima desse % de risco). Tudo fica em MQL5\Files\ALIEN_ordens_telegram.csv.
+
+**Modo autônomo (só conta DEMO)**
+- Com autonomo=demo no ALIEN_config.txt (ou **/autonomo on**) o robô opera sozinho **só na conta demo** (confere toda vez; na conta real ele se recusa), mesmo no modo assistente.
+- Só entra com: nota boa, horário bom (Londres/NY ou killzone), H1 a favor, alvo de no mínimo 1,5x o risco, stop sempre, limites do dia dele. Sem martingale, sem grade, sem preço médio. A IA pode vetar a entrada, mas nunca inventa preço.
+- Cada abertura e fechamento chega no Telegram com o motivo. Cada decisão fica em ALIEN_decisoes.csv.
+- Aprende devagar e com segurança: depois de pelo menos 30 trades num mesmo tipo (compra/venda × sessão), se estiver perdendo ele fica mais exigente ou desliga aquele tipo. Nunca aumenta lote nem risco. Ele avisa quando muda. Veja em **/aprendizado**; desfaça com **/reset_aprendizado**. **/autonomo off** desliga.
+- Lembrete honesto: no teste de 10 anos, as setas perderam dinheiro. Por isso é só na demo, pra aprender.
+
+**A IA sabe mais do projeto**
+- Ela recebe um resumo do projeto (resultados dos testes, regras, sessões, velas, Trading in the Zone) e só pode usar esses números. O arquivo é MQL5\Files\ALIEN_conhecimento.txt — você pode editar.
+
+**Botões**
+- Novos no teclado do privado: 🎓 Explica, 📒 Trades, 🔔 Alertas. O /ajuda mostra tudo que é novo.
+
+**Pra atualizar**: rode o **INSTALAR.bat** do kit novo (ele acrescenta as linhas novas no seu ALIEN_config.txt sem apagar nada).
+
 ## Versão 12.5 — Alier sabe o dia, a hora e a agenda (15/11/2026)
 **O que estava errado**
 - No domingo ele falou "reabre domingo à noite, lá pelas 18h" e "revisa antes de domingo", sendo que já era domingo. E disse que não via notícias.

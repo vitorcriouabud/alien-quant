@@ -1,8 +1,16 @@
-# ALIEN PROFESSOR — manual simples (versão 12.5, agente Alier)
+# ALIEN PROFESSOR — manual simples (versão 12.6, agente Alier)
 
 É um **indicador** pro MT5. Ele **não abre, não fecha e não mexe em ordem nenhuma**. Ele lê o gráfico pra você e mostra tudo num painel preto e amarelo. **Quem decide é você.**
 
 Feito pra ouro (XAUUSD) e índices (.US500Cash, .USTECHCash, .DE40Cash) na RoboForex ECN. Usa os dados reais do símbolo (valor do tick, lote mínimo, passo do lote), então o lote é calculado certo pra cada um.
+
+
+## Novo na 12.6 (resumo)
+- **/explica** ou "o que é essa linha?": print + explicação simples de tudo no gráfico. **/aula fvg**, **/guia** e o arquivo **GUIA_DO_GRAFICO.md**.
+- Fale normal ("me avisa em 3900", "deixa o gráfico limpo", "me lembra às 9h") e ele faz. Só você muda as coisas. **/podes** mostra a lista.
+- **/trades**: seus trades de hoje comparados com o painel na hora da entrada.
+- Ordens: "compra 0.05 stop 3880 alvo 3900", "fecha tudo", "move stop pro zero" → resumo + **✅ Confirmar** (60 s). Limites do dia só avisam. telegram_ordens=demo|real|off no ALIEN_config.txt.
+- Autônomo só na DEMO (autonomo=demo ou /autonomo on), com aprendizado seguro (/aprendizado, /reset_aprendizado). Detalhes no MUDANCAS.md.
 
 ## O que funciona de verdade (leia antes de tudo)
 - **Índices = robô ALIEN_INDICES_V1** (pasta `indices/`). Opera S&P 500, Nasdaq 100 e DAX 40 no diário (reversão à média, stop fixo, sem martingale). No teste longo a cesta dos 3 índices deu **~3,8% ao ano**, com **queda máxima ~7,6%** e **PF 1,28**. É pouco, mas é **real e positivo**.
@@ -196,7 +204,7 @@ Token do Telegram, chat id e chaves ficam no arquivo **`MQL5\Files\ALIEN_config.
 ### Agente Alier (novo na 12.3)
 - **Botões fixos** embaixo do chat: 📰 Notícias, 📊 Análise, 🧭 Plano, 📸 Foto, ℹ️ Status, ⏸️ Pausa, ▶️ Retoma.
 - **"Voltei ✅"** só chega depois de uma **queda de verdade** (MT5 fechou, caiu a energia/internet, conta reconectou), no máximo 1 a cada 15 min, sem saldo e com o motivo em português. Tirar/trocar gráfico ou mudar parâmetro não avisa.
-- **/status** mostra *"Alier versão 12.5, ligado às HH:MM (Brasília)"*. Todo horário que o Alier escreve é de **Brasília**; o resumo da semana sai **domingo 20:00 (Brasília)**.
+- **/status** mostra *"Alier versão 12.6, ligado às HH:MM (Brasília)"*. Todo horário que o Alier escreve é de **Brasília**; o resumo da semana sai **domingo 20:00 (Brasília)**.
 - **Notícias** perguntadas no texto ("e as notícias?") são respondidas pelo próprio robô, sem IA, curtinho.
 - **Conversa livre:** com as duas Gemini, fica a resposta **mais curta e limpa**. Na análise: *"As duas leituras bateram ✅"* ou *"discordaram, então eu esperaria 🟡"*.
 - **Avisos sozinhos** (*InpAlertasProativos*, padrão ligado; máx. *InpAlertasMaxHora* = 6 por hora; mesmo tipo a cada *InpAlertaCooldownMin* = 20 min; sem repetir depois de reiniciar): 💧 varrida da máxima/mínima da Ásia, de ontem ou de Londres; 🔄 CHoCH / 📈📉 BOS no tempo da estrutura (M5); 🧱 preço no bloco de ordens; 〰️ toque na VWAP; ⚡ setup 7/7; 📰 notícia forte em 15 min.
