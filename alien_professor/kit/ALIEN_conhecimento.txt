@@ -1,0 +1,19 @@
+# ALIEN - o que o projeto ja aprendeu (a IA le este arquivo). Pode editar. Use so numeros que estao aqui.
+TESTES DE 10 ANOS (ouro XAUUSD, dados 2016-2025, com spread e comissao):
+- A seta do robo sozinha NAO tem vantagem. Nota >= 7 (12.858 trades 2016-2024): acerto 28,9%, media -0,32R por trade, PF 0,59. 2025: -0,22R. 0 de 10 anos positivos.
+- A nota nao separa nada: todo BOS do M5 por faixa de nota deu -0,27R (0-4), -0,26R (5-6), -0,25R (7-8), -0,26R (9-10).
+- Mesmo sem comissao a media fica negativa (-0,17R a -0,20R): stop curto (risco mediano 2,0-2,5 pontos no ouro) + spread come o resto.
+- Nota 9-10 nas setas: +0,02R em 248 trades (t 0,2) = ruido; caiu para -0,10R em 2025.
+- US500 (aproximado): setas -0,17R, 0 de 10 anos positivos.
+- VO3 (vela de corpo forte + volume 2x + rompimento + FVG no M15): lucro 2016-2024 com poucos trades, PERDEU em 2025, e um unico dia carregou 14,5% do lucro. Pista fraca, so observacao.
+- Cesta de indices (ALIEN_INDICES_V1): cerca de 3,8% ao ano com queda maxima de ~7,6% no teste. Ainda nao provado ao vivo.
+- Robo AIBOTFX (recuperacao/hedge): o Vitor perdeu dinheiro. Licao: nada de martingale, grade ou preco medio.
+CONCLUSAO: o robo serve para LER o grafico (liquidez, varrida, FVG, lote, hora de parar) e para disciplina. Nao e maquina de sinal.
+HORARIO (Brasilia): melhores janelas no ouro = abertura de Londres, sobreposicao Londres/NY e abertura de NY. Asia em geral consolida (horario RUIM, pouco volume, armadilha). Almoco de NY mais fraco. Abertura de domingo: gap e spread largo, evitar os primeiros 15-30 min. Dados das 08:30 NY (10:30 Brasilia no inverno dos EUA, 09:30 no verao) mexem forte.
+REGRAS QUE FICAM: alvo minimo 1,5 vez o risco; stop sempre antes de entrar, atras da estrutura; rompimento so vale com CORPO, nao pavio; nao operar consolidacao apertada; no rompimento espere o reteste, nao persiga; leia de cima para baixo (semana, dia, H1/M15, depois M5/M1); M1 sozinho e ruido.
+LOGICA DO PRECO (curso do Vitor, feito para opcao binaria; no ouro precisa de stop e alvo): comando = primeira vela de um movimento novo, sem pavio do lado da abertura; marcar abertura, 50% e fechamento; reacao nos 50% e uma ideia a testar, nao certeza. "E batata" e "100%" sao hype.
+VELAS: engolfo, martelo/estrela cadente, doji, tres soldados/tres corvos so valem como confluencia em topo ou fundo de swing, nunca no meio do M1.
+TRADING IN THE ZONE (Mark Douglas): um trade isolado nao precisa estar certo; o que importa e repetir um plano com risco definido, pensando em serie. Stop definido antes libera a cabeca. Padrao nao e obrigacao de lucro. Disciplina, nao seta.
+HIPOTESES DO LABORATORIO (nenhuma provada): reacao no 50% do comando em Londres/NY; reteste apos rompimento de corpo; caca da faixa da Asia na abertura de Londres; OTE 62-70% do swing de Londres na abertura de NY; topos/fundos iguais + rompimento de corpo. Criterio: media > 0 depois dos custos, >= 200 operacoes, queda maxima ate 20%, testado em 2026 sem reotimizar.
+PLANO DO PROJETO: 2 a 3 meses so na DEMO juntando dados (diarios CSV). Guardar todo mes parte do que entra na barbearia, fora do trade.
+COMO FALAR: cite esses numeros quando ajudar (ex.: "nos testes, seguir a seta sozinha deu -0,32R por trade"), sem inventar outros. Se nao souber, diga que nao sabe.

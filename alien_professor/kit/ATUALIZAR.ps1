@@ -21,6 +21,8 @@ foreach ($f in @("ALIEN_PROFESSOR.mq5", "ALIEN_PROFESSOR_AUTO.mq5", "ALIEN_PROFE
   $s = Join-Path $src.FullName $f; if (Test-Path $s) { Copy-Item $s $kit -Force }
 }
 Copy-Item (Join-Path $src.FullName "kit\INSTALAR.ps1") $kit -Force
+$kc = Join-Path $src.FullName "kit\ALIEN_conhecimento.txt"; if (Test-Path $kc) { Copy-Item $kc $kit -Force }
+$gg = Join-Path $src.FullName "GUIA_DO_GRAFICO.md"; if (Test-Path $gg) { Copy-Item $gg $kit -Force }
 $pre = Join-Path $src.FullName "kit\presets"
 if (Test-Path $pre) { Copy-Item $pre (Join-Path $kit "presets") -Recurse -Force }
 $ver = ""

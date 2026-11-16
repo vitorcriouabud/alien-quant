@@ -68,7 +68,23 @@ $cfgDst = Join-Path $mql "Files\ALIEN_config.txt"
 if (Test-Path $cfgSrc) {
   New-Item -ItemType Directory -Force -Path (Join-Path $mql "Files") | Out-Null
   if (-not (Test-Path $cfgDst)) { Copy-Item $cfgSrc $cfgDst; Write-Host "Configuracao pessoal instalada (MQL5\Files\ALIEN_config.txt)." -ForegroundColor Green }
-  else { Write-Host "Mantive a sua configuracao pessoal que ja existia (ALIEN_config.txt)." }
+  else {
+    Write-Host "Mantive a sua configuracao pessoal que ja existia (ALIEN_config.txt)."
+    # v12.6: acrescenta so as linhas novas do kit (autonomo, telegram_ordens) se ainda nao existirem. Nunca mexe nas chaves.
+    $atual = Get-Content $cfgDst -ErrorAction SilentlyContinue
+    foreach ($k in @("autonomo","telegram_ordens")) {
+      $tem = $atual | Where-Object { $_ -match ("^\s*" + $k + "\s*=") }
+      $linha = Get-Content $cfgSrc | Where-Object { $_ -match ("^\s*" + $k + "\s*=") } | Select-Object -First 1
+      if (-not $tem -and $linha) { Add-Content -Path $cfgDst -Value $linha; Write-Host ("Acrescentei na configuracao: " + $linha) -ForegroundColor Green }
+    }
+  }
+}
+# v12.6: conhecimento do Alier (texto que a IA consulta). So copia se nao existir: se voce editar, atualizar nao apaga.
+$kSrc = Join-Path $aqui "ALIEN_conhecimento.txt"
+$kDst = Join-Path $mql "Files\ALIEN_conhecimento.txt"
+if (Test-Path $kSrc) {
+  New-Item -ItemType Directory -Force -Path (Join-Path $mql "Files") | Out-Null
+  if (-not (Test-Path $kDst)) { Copy-Item $kSrc $kDst; Write-Host "Conhecimento do Alier instalado (MQL5\Files\ALIEN_conhecimento.txt)." -ForegroundColor Green }
 }
 Write-Host ("OK -> " + $nome) -ForegroundColor Green
 Write-Host ("     " + $exp)
