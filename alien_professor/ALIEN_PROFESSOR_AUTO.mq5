@@ -6,10 +6,10 @@
 //| Stop e alvo vão junto com a ordem. Conta real bloqueada padrão.  |
 //+------------------------------------------------------------------+
 #property copyright "ALIEN - Vitor Lima"
-#property version   "12.50"
+#property version   "12.60"
 #property description "Robô dos sinais do ALIEN PROFESSOR. Risco fixo, 1 posição, travas diárias, DD 15%, bloqueio de conta real. ATENÇÃO: o teste histórico dos sinais foi NEGATIVO."
 #define APROF_EA
-#define APROF_VER "12.5"
+#define APROF_VER "12.6"
 #include <Trade\Trade.mqh>
 
 input group "=== ROBÔ (AUTO) ==="
@@ -123,6 +123,7 @@ input bool   InpLinhasChave       = true;        // Linhas dos níveis principai
 input bool   InpMarcasGrafico     = true;        // Varridas, mudanças e vazios no gráfico
 input int    InpMaxMarcas         = 8;           // Quantas marcas recentes (leve)
 input bool   InpCenariosGrafico   = true;        // Setas do cenário projetado (não é certeza)
+input bool   InpArrumarRotulos    = true;        // Afastar/esconder textos que ficam um em cima do outro no gráfico
 
 #define PFX "APROF_"
 bool   g_noDraw=false;          // tester sem visual: não desenha nada (mais rápido)
@@ -959,7 +960,7 @@ void Core_Update(bool forcePanel=false)
       if(refresh){ g_fvgH1Bar=0; g_fvgM15Bar=0; ArrayInitialize(g_mtfBar,0); }
       g_lastBar=bt; g_ready=true; lastFull=GetTickCount64();
       EngCalc();
-      if(!g_noDraw){ DrawNiveis(); DrawEstrutura(); DrawLinhasChave(); EngDrawBlocos(); DrawCenarios(); }
+      if(!g_noDraw){ DrawNiveis(); DrawEstrutura(); DrawLinhasChave(); EngDrawBlocos(); DrawCenarios(); RotulosArruma(); }
    }
    else
    {
@@ -975,7 +976,7 @@ void Core_Update(bool forcePanel=false)
    string sTxt; int sN=SessaoNota(now,sTxt);
    CalcPlano(1,g_pb,sN); CalcPlano(-1,g_ps,sN);
    Plano b=MelhorPlano();
-   if(!g_noDraw){ DrawPlano(b); if(newBar||refresh){ DrawLinhasChave(); DrawCenarios(); } Painel(); }
+   if(!g_noDraw){ DrawPlano(b); if(newBar||refresh){ DrawLinhasChave(); DrawCenarios(); RotulosArruma(); } Painel(); }
    // alerta (uma vez por barra)
    static int prevOk=0; // 0 = abaixo; +1/-1 = já avisou nessa direção
    bool okNow=(PlanoValido(b) && b.score>=InpScoreAlerta && g_pare=="" && NoticiaAviso(now)=="");
@@ -1589,6 +1590,9 @@ bool EngChartEvent(const int id,const string sparam)
 // Painel compacto (amarelo/preto/branco) + linhas e cenários no gráfico
 //====================================================================
 #define PAINEL_W 456
+// v12.6: blocos do painel e modo limpo (o Vitor liga/desliga pelo Telegram)
+bool g_modoLimpo=false;
+bool g_pnIA=true, g_pnNiv=true, g_pnConf=true, g_pnConta=true, g_pnOculto=false;
 // g_painelMin vive em core.mqh
 datetime g_aiPanelT=0;
 string   g_aiPanelPrev="";
@@ -1842,6 +1846,7 @@ void PainelDesenhaDash()
    int hNiv=thB+8*thS+8;
    int hBar=22+thS;
    int hDisc=thS+thB+8;
+   if(!g_pnIA) hAi=-6; if(!g_pnNiv) hNiv=0; if(!g_pnConf) hBar=0; if(!g_pnConta) hDisc=0;
    int H=8+thB+6+hAi+hHead+hMtf+hNiv+hBar+hDisc+10;
    if(g_cv.Width()!=W || g_cv.Height()!=H) g_cv.Resize(W,H);
    g_cv.Erase(ColorToARGB(clrBlack,230));
@@ -1852,6 +1857,7 @@ void PainelDesenhaDash()
    g_cv.TextOut(pad,y,"ALIEN PROFESSOR",ColorToARGB(clrGold,255));
    y+=thB+6;
 
+   if(g_pnIA){
    // caixa da IA
    int boxY=y, boxH=hAi;
    g_cv.FillRectangle(6,boxY,W-7,boxY+boxH-1,ColorToARGB(C'18,16,0',240));
@@ -1879,6 +1885,7 @@ void PainelDesenhaDash()
       g_cv.TextOut(pad,iy,"Atualizado às "+TimeToString(SrvParaBR(g_aiPanelT),TIME_MINUTES)+" (Brasília)",ColorToARGB(clrSilver,255));
    }
    y=boxY+boxH+6;
+   }
 
    // cabeçalho compacto
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID), ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK);
@@ -1915,6 +1922,7 @@ void PainelDesenhaDash()
    }
    y+=thB+6;
 
+   if(g_pnNiv){
    // níveis
    PainelFonte(f-1,true);
    g_cv.TextOut(pad,y,"Níveis (distância em pontos)",ColorToARGB(clrGold,255));
@@ -1937,7 +1945,9 @@ void PainelDesenhaDash()
       y+=thS;
    }
    y+=4;
+   }
 
+   if(g_pnConf){
    // barra de confluência
    PainelFonte(f-1,true);
    int cb=g_efBuy, cs=g_efSell; if(cb<0) cb=0; if(cs<0) cs=0;
@@ -1954,7 +1964,9 @@ void PainelDesenhaDash()
    }
    g_cv.Rectangle(barX,y,barX+barW,y+barH,ColorToARGB(clrGold,255));
    y+=barH+8;
+   }
 
+   if(g_pnConta){
    // disciplina
    PainelFonte(f-1,true);
    g_cv.TextOut(pad,y,"Hoje na conta",ColorToARGB(clrGold,255));
@@ -1965,6 +1977,7 @@ void PainelDesenhaDash()
    g_cv.TextOut(pad,y,disc,ColorToARGB(clrWhite,255));
    y+=thS;
    if(g_pare!="") { PainelFonte(f-1,true); g_cv.TextOut(pad,y,g_pare,ColorToARGB(clrGold,255)); }
+   }
    g_cv.Update(true);
 }
 
@@ -1973,6 +1986,8 @@ void PainelMontaEDesenha()
    if(g_noDraw) return;
    EngBotoes();
    if(!g_cvOk) return;
+   ObjectSetInteger(0,PFX+"PAINEL",OBJPROP_TIMEFRAMES,g_pnOculto?OBJ_NO_PERIODS:OBJ_ALL_PERIODS);
+   if(g_pnOculto) return;
    if(g_painelMin){ PainelDesenhaMini(); return; }
    if(g_engPag>0)
    {
@@ -2078,13 +2093,104 @@ void DrawCenarios()
    if(PlanoValido(outr) && !(PlanoValido(main) && outr.dir==main.dir)) DrawCenarioLado(outr,false,t0);
 }
 
+//====================================================================
+// v12.6: gráfico limpo. Textos que caem um em cima do outro são afastados
+// (sobe/desce alguns pixels) ou escondidos; "modo limpo" mostra só o essencial.
+// Painel: blocos que o Vitor pode esconder pelo Telegram.
+//====================================================================
+string g_rotNome[]; double g_rotOrig[]; double g_rotMov[];
+// objetos que o modo limpo esconde (os níveis-chave, o plano e as suas linhas ficam)
+bool RotuloSoDetalhe(string n)
+{
+   string pf[]={"NV","SWP","BOS","FVG","FH1","FM15","OBL","VOL","SIG","CEN1"};
+   for(int i=0;i<ArraySize(pf);i++) if(StringFind(n,PFX+pf[i])==0) return true;
+   return false;
+}
+// prioridade: maior fica no lugar, menor é que se mexe
+int RotuloPrioridade(string n)
+{
+   if(StringFind(n,PFX+"USR")==0) return 6;
+   if(StringFind(n,PFX+"PL")==0) return 5;
+   if(StringFind(n,PFX+"CEN0")==0) return 4;
+   if(StringFind(n,PFX+"SWP")==0) return 3;
+   if(StringFind(n,PFX+"BOS")==0) return 2;
+   return 1;
+}
+double RotuloOrigem(string n,double cur)
+{
+   for(int i=0;i<ArraySize(g_rotNome);i++) if(g_rotNome[i]==n){ if(MathAbs(g_rotMov[i]-cur)<_Point*0.5) return g_rotOrig[i]; return cur; }
+   return cur;
+}
+void RotuloGuarda(string n,double orig,double mov)
+{
+   for(int i=0;i<ArraySize(g_rotNome);i++) if(g_rotNome[i]==n){ g_rotOrig[i]=orig; g_rotMov[i]=mov; return; }
+   int k=ArraySize(g_rotNome); ArrayResize(g_rotNome,k+1); ArrayResize(g_rotOrig,k+1); ArrayResize(g_rotMov,k+1);
+   g_rotNome[k]=n; g_rotOrig[k]=orig; g_rotMov[k]=mov;
+}
+bool RotuloBate(int x,int y,int w,int h,const int &bx[],const int &by[],const int &bw[],const int &bh[],int nb)
+{
+   for(int i=0;i<nb;i++) if(x<bx[i]+bw[i] && bx[i]<x+w && y<by[i]+bh[i] && by[i]<y+h) return true;
+   return false;
+}
+void RotulosArruma()
+{
+   if(g_noDraw) return;
+   int tot=ObjectsTotal(0,0,-1);
+   string nm[]; int pr[]; ArrayResize(nm,0); ArrayResize(pr,0);
+   for(int i=0;i<tot;i++)
+   {
+      string n=ObjectName(0,i,0,-1); if(StringFind(n,PFX)!=0) continue;
+      bool det=RotuloSoDetalhe(n);
+      ObjectSetInteger(0,n,OBJPROP_TIMEFRAMES,(g_modoLimpo && det)?OBJ_NO_PERIODS:OBJ_ALL_PERIODS);
+      if(g_modoLimpo && det) continue;
+      if(ObjectGetInteger(0,n,OBJPROP_TYPE)!=OBJ_TEXT) continue;
+      int k=ArraySize(nm); ArrayResize(nm,k+1); ArrayResize(pr,k+1); nm[k]=n; pr[k]=RotuloPrioridade(n);
+   }
+   if(!InpArrumarRotulos) return;
+   int n=ArraySize(nm); if(n==0) return;
+   // ordena por prioridade (maior primeiro)
+   for(int a=0;a<n-1;a++) for(int b=a+1;b<n;b++) if(pr[b]>pr[a]){ int tp=pr[a]; pr[a]=pr[b]; pr[b]=tp; string tn=nm[a]; nm[a]=nm[b]; nm[b]=tn; }
+   int bx[],by[],bw[],bh[]; ArrayResize(bx,n); ArrayResize(by,n); ArrayResize(bw,n); ArrayResize(bh,n); int nb=0;
+   int off[]={0,-14,14,-28,28};
+   for(int i=0;i<n;i++)
+   {
+      string o=nm[i];
+      datetime t=(datetime)ObjectGetInteger(0,o,OBJPROP_TIME,0);
+      double cur=ObjectGetDouble(0,o,OBJPROP_PRICE,0);
+      double orig=RotuloOrigem(o,cur);
+      int x,y; if(!ChartTimePriceToXY(0,0,t,orig,x,y)){ continue; }
+      int sz=(int)ObjectGetInteger(0,o,OBJPROP_FONTSIZE); if(sz<=0) sz=8;
+      int w=(int)(StringLen(ObjectGetString(0,o,OBJPROP_TEXT))*sz*0.62)+6, h=sz+6;
+      long an=ObjectGetInteger(0,o,OBJPROP_ANCHOR);
+      if(an==ANCHOR_RIGHT_LOWER || an==ANCHOR_RIGHT_UPPER || an==ANCHOR_RIGHT) x-=w;
+      if(an==ANCHOR_LOWER || an==ANCHOR_UPPER || an==ANCHOR_CENTER) x-=w/2;
+      if(an==ANCHOR_LEFT_LOWER || an==ANCHOR_RIGHT_LOWER || an==ANCHOR_LOWER) y-=h;
+      int achou=-1;
+      for(int q=0;q<ArraySize(off);q++) if(!RotuloBate(x,y+off[q],w,h,bx,by,bw,bh,nb)){ achou=q; break; }
+      if(achou<0){ ObjectSetInteger(0,o,OBJPROP_TIMEFRAMES,OBJ_NO_PERIODS); RotuloGuarda(o,orig,cur); continue; }
+      double novo=orig;
+      if(off[achou]!=0)
+      {
+         int sub=0; datetime t2; double p2;
+         int yAnc=y+off[achou]+((an==ANCHOR_LEFT_LOWER || an==ANCHOR_RIGHT_LOWER || an==ANCHOR_LOWER)?h:0);
+         if(ChartXYToTimePrice(0,x>0?x:1,yAnc,sub,t2,p2) && p2>0) novo=p2;
+      }
+      ObjectSetDouble(0,o,OBJPROP_PRICE,0,novo);
+      RotuloGuarda(o,orig,novo);
+      bx[nb]=x; by[nb]=y+off[achou]; bw[nb]=w; bh[nb]=h; nb++;
+   }
+}
+
 // ---- configuração pessoal local (MQL5\Files\ALIEN_config.txt) ----
 // Token, chat id e chaves ficam NESTE arquivo do seu PC, não no robô. Atualizar o robô não apaga.
 string g_cfgTgToken="", g_cfgTgChat=""; bool g_cfgAssistente=false; string g_cfgOrigem="parâmetros";
 // v12.4: grupo do Telegram (opcional). telegram_grupo_id fica no ALIEN_config.txt; o Vitor manda /grupo no grupo pra liberar.
 string g_cfgGrupo=""; bool g_cfgGrupoAlertas=false;
+// v12.6: ordens pelo Telegram (off/demo/real), autônomo na demo, avisos de limite (0 = sem limite)
+string g_cfgTgOrdens="demo"; bool g_cfgAutonomo=false; double g_cfgOrdRiscoPct=1.0, g_cfgOrdLoteMax=0, g_cfgPerdaMaxDia=0; int g_cfgMaxStopsDia=0;
 // para onde vai a resposta da mensagem que está sendo atendida ("" = chat privado do dono)
 string g_tgReply=""; bool g_tgEmGrupo=false; string g_tgQuem="Vitor";
+string g_tgFromId="";   // v12.6: from.id de quem mandou (dono = mesmo número do chat privado do Vitor)
 string CfgArq(){ return "ALIEN_config.txt"; }
 // grava/troca uma linha "chave=valor" no ALIEN_config.txt (mantém o resto)
 void CfgSalva(string chave,string valor)
@@ -2102,6 +2208,7 @@ void CfgSalva(string chave,string valor)
 void CfgLoad()
 {
    g_cfgTgToken=InpTelegramToken; g_cfgTgChat=InpTelegramChatId; AICfgInit(); g_cfgAssistente=false; g_cfgOrigem="parâmetros"; g_cfgGrupo=""; g_cfgGrupoAlertas=false;
+   g_cfgTgOrdens="demo"; g_cfgAutonomo=false; g_cfgOrdRiscoPct=1.0; g_cfgOrdLoteMax=0; g_cfgPerdaMaxDia=0; g_cfgMaxStopsDia=0;
    int h=FileOpen(CfgArq(),FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
    if(h==INVALID_HANDLE) return;
    int n=0;
@@ -2119,6 +2226,12 @@ void CfgLoad()
       else if(k=="xai_chave"){ g_cfgAIKey=v; n++; }
       else if(k=="telegram_grupo_id"){ g_cfgGrupo=v; n++; }
       else if(k=="grupo_alertas"){ g_cfgGrupoAlertas=(v=="1" || v=="sim" || v=="true"); n++; }
+      else if(k=="telegram_ordens"){ g_cfgTgOrdens=v; StringToLower(g_cfgTgOrdens); n++; }
+      else if(k=="autonomo"){ string m=v; StringToLower(m); g_cfgAutonomo=(m=="demo"||m=="on"||m=="1"||m=="sim"); n++; }
+      else if(k=="ordem_risco_aviso_pct"){ g_cfgOrdRiscoPct=StringToDouble(v); n++; }
+      else if(k=="ordem_lote_max"){ g_cfgOrdLoteMax=StringToDouble(v); n++; }
+      else if(k=="max_stops_dia"){ g_cfgMaxStopsDia=(int)StringToInteger(v); n++; }
+      else if(k=="perda_max_dia"){ g_cfgPerdaMaxDia=StringToDouble(v); n++; }
       else if(k=="modo"){ string m=v; StringToLower(m); g_cfgAssistente=(StringFind(m,"assist")==0); n++; }
    }
    FileClose(h);
@@ -2692,9 +2805,10 @@ void Diario(const Plano &b,string acao)
    CsvAppend("ALIEN_diario.csv","hora;simbolo;lado;nota;faixa;sessao;entrada;stop;alvo;rr;lote;acao",
       StringFormat("%s;%s;%s;%d;%s;%s;%s;%s;%s;%.2f;%.2f;%s",TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES),_Symbol,b.dir==1?"compra":"venda",b.score,Faixa(b.score),
       SessNome(TimeCurrent()),Fmt(b.entry),Fmt(b.stop),b.target>0?Fmt(b.target):"-",b.rr,b.lot,acao));
+   DecisaoLog(b,acao);   // v12.6: toda decisão (entrou ou pulou) com a foto completa
 }
 // estatística do histórico (ALIEN_aprendizado.csv) para a IA e para a trava opcional
-struct HistRow { string sym; int dir; int score; string sess; int hour; double R; };
+struct HistRow { string sym; int dir; int score; string sess; int hour; double R; datetime t; };
 HistRow g_hist[]; datetime g_histLoad=0;
 void LoadHist()
 {
@@ -2709,7 +2823,7 @@ void LoadHist()
       string c[]; if(StringSplit(ln,';',c)<10) continue;
       int k=ArraySize(g_hist); ArrayResize(g_hist,k+1);
       g_hist[k].sym=c[1]; g_hist[k].dir=(c[2]=="compra"?1:-1); g_hist[k].score=(int)StringToInteger(c[3]);
-      g_hist[k].sess=c[5]; g_hist[k].hour=(int)StringToInteger(c[6]); g_hist[k].R=StringToDouble(c[9]);
+      g_hist[k].t=StringToTime(c[0]); g_hist[k].sess=c[5]; g_hist[k].hour=(int)StringToInteger(c[6]); g_hist[k].R=StringToDouble(c[9]);
    }
    FileClose(h);
 }
@@ -3381,7 +3495,7 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
       return;
    }
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
-   string sys=(plano?SysChatAnalise():SysChatLivre())+GrupoNota();
+   string sys=(plano?SysChatAnalise():SysChatLivre()+AcoesSysTxt())+GrupoNota();
    if(EhReclamaRepete(pergunta)) sys+=" O Vitor reclamou que você está repetindo. NÃO peça desculpa e cole o mesmo texto. Responda só o que falta, de outro jeito, bem curto.";
    bool abert=EhPerguntaAbertura(pergunta) || MercadoFechado();
    int tok=plano?600:(EhPerguntaAbertura(pergunta)?480:350);
@@ -3389,8 +3503,9 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
    string r=AIAskEx(sys,MemTxt()+CtxIA(pergunta,true,abert)+"CONTEXTO DO MERCADO (JSON):\n"+ctx+"\n\n"+QuemMsg()+":\n"+pergunta,tok,false,plano,temp);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=SemCamposCrus(r);
-   if(plano) r=EdgeSePreciso(r);
-   else r=SoRespostaCurta(r,pergunta);
+   string acNm[],acPr[],acLimpo; bool temAcao=false;
+   if(plano){ AcoesExtrai(r,acNm,acPr,acLimpo); r=EdgeSePreciso(acLimpo); }
+   else { temAcao=(StringFind(r,"[ACAO:")>=0); if(temAcao){ r=AcoesProcessa(r); } else r=SoRespostaCurta(r,pergunta); }
    if(plano && StringLen(r)>900)
    {
       string tail="";
@@ -3447,6 +3562,7 @@ string StatusTxt()
    string fx[4]={"0-4","5-6","7-8","9-10"};
    for(int f=0;f<4;f++){ int nn; double ww,aa; HStat(fx[f],0,"",nn,ww,aa); if(nn>0) s+=StringFormat("  nota %s: %d trades, acerto %.0f%%, R %+.2f\n",fx[f],nn,ww,aa); }
    s+="Trava do histórico: "+(InpAprenderDesativar?"ligada":"desligada")+".";
+   s+="\nAutônomo: "+(AutonomoAtivo()?"LIGADO (demo)":(g_cfgAutonomo&&!ContaDemo()?"bloqueado (conta REAL)":"desligado"))+". Ordens pelo Telegram: "+g_cfgTgOrdens+(g_modoLimpo?". Modo limpo ligado":"")+".";
    return s;
 }
 string NoticiasTxt()
@@ -3473,6 +3589,11 @@ string AjudaTxt()
           "/foto - print com uma explicação curtinha\n"
           "/memoria - o que eu lembro de você  |  /esquece - apago\n"
           "/grupo - (no grupo, só o Vitor) libera o grupo pra falar comigo\n"
+          "🆕 /explica - o que é cada linha do gráfico | /aula fvg | /guia - legenda\n"
+          "🆕 /trades - seus trades de hoje e o porquê | /podes - tudo que eu sei fazer\n"
+          "🆕 Me dá ordens com suas palavras: \"me avisa em 3900\", \"modo limpo\", \"não me deixa operar na Ásia\", \"me lembra 10:30\"\n"
+          "🆕 Ordem (só você, com Confirmar): \"compra 0.05 stop 3880 alvo 3900\", \"fecha metade\", \"stop no zero\"\n"
+          "🆕 /autonomo on|off - eu opero sozinho na DEMO e aprendo | /aprendizado | /reset_aprendizado\n"
           "Pode escrever sobre qualquer assunto, mandar áudio 🎤 ou foto 📷 (até print de gráfico de outro lugar). Eu também te aviso sozinho quando varrer liquidez, mudar a estrutura ou chegar num bloco importante.";
 }
 void TgHandle(string chat,string text)
@@ -3494,6 +3615,11 @@ void TgHandle(string chat,string text)
    if(!iscmd){ string bc=BotaoCmd(text); if(bc!=""){ cmd=bc; args=""; iscmd=true; } }
    Print("Telegram: comando ",cmd!=""?cmd:"(texto livre)",g_tgEmGrupo?" (grupo)":"");
    if(!iscmd && !g_tgEmGrupo && DisciplinaMotivo(text)) return;
+   // v12.6: o que muda estado no robô = só o dono (privado ou o from.id do Vitor no grupo)
+   if(!TgDono() && (cmd=="/pausa"||cmd=="/retoma"||cmd=="/pausa_ok"||cmd=="/retoma_ok"||cmd=="/esquece"||(cmd=="/alerta" && args!="")||cmd=="/linha"||cmd=="/limpo"||cmd=="/painel"||cmd=="/regra"||cmd=="/lembrete"||cmd=="/mudo"||cmd=="/som"||cmd=="/nota"||cmd=="/simbolo"||cmd=="/símbolo"||cmd=="/disc"))
+   { SendMsg(NaoDono()); return; }
+   if(iscmd && OrdensCmd(cmd,args)) return;
+   if(iscmd && AcoesCmd(cmd,args)) return;
    if(cmd=="/grupo"){ SendMsg(g_tgEmGrupo?"Este grupo já tá liberado ✅ Me chama com /comando, marcando @"+BotUser()+" ou respondendo uma mensagem minha.":"Pra liberar um grupo: me adiciona nele e manda /grupo lá dentro (só você, Vitor)."); return; }
    if(cmd=="/start" || cmd=="/ajuda" || cmd=="/help"){ SendMsgKb(AjudaTxt()); return; }
    if(cmd=="/status"){ SendMsg(StatusTxt()); return; }
@@ -3507,7 +3633,7 @@ void TgHandle(string chat,string text)
    if(cmd=="/plano"){ SendMsg(EdgeSePreciso(PlanoTxt())); return; }
    if(cmd=="/niveis" || cmd=="/níveis"){ SendMsg(NiveisTxt()); return; }
    if(cmd=="/diario" || cmd=="/diário"){ SendMsg(DiarioTxt()); return; }
-   if(cmd=="/aprendizado"){ SendMsg(AprendizadoTxt()); return; }
+   if(cmd=="/aprendizado"){ SendMsg(AprendizadoTxt()+"\n\n"+AdaptTabelaTxt()); return; }
    if(cmd=="/risco"){ SendMsg(RiscoTxt()); return; }
    if(cmd=="/pausa"){ PedeConfirmaPausa(true); return; }
    if(cmd=="/retoma"){ PedeConfirmaPausa(false); return; }
@@ -3517,7 +3643,7 @@ void TgHandle(string chat,string text)
    {
       double px=StringToDouble(args);
       if(px<=0) SendMsg("Manda assim: /alerta 3870  (preço maior que zero). Alertas ativos: "+AlertaLista());
-      else { AlertaAdd(px); SendMsg("Beleza, alerta em "+Fmt(px)+" salvo. Ativos: "+AlertaLista()); }
+      else { AlertaAdd(px); UsuarioDesenha(); SendMsg("Beleza, alerta em "+Fmt(px)+" salvo. Ativos: "+AlertaLista()); }
       return;
    }
    if(cmd=="/analise" || cmd=="/análise")
@@ -3531,9 +3657,15 @@ void TgHandle(string chat,string text)
          return;
       }
       if(args!=""){ SendMsg("Não achei esse símbolo/tempo. Exemplos: /analise H4  |  /analise XAUUSD M15  |  /analise US500 H1"); return; }
+      if(g_simFoco!="" && TemCotacao(g_simFoco)){ SendMsg("Deixa eu olhar o "+g_simFoco+"..."); ChatIA("Olha o "+g_simFoco+" no "+TfNome(InpTFExec)+" com os números do contexto, no seu estilo informal, e fecha com VEREDITO.","ANÁLISE "+g_simFoco,g_simFoco,InpTFExec,true,true); return; }
       SendMsg("Deixa eu olhar o "+_Symbol+"..."); ChatIA("Olha o gráfico de agora com os números do contexto, no seu estilo informal, e fecha com VEREDITO.","ANÁLISE "+_Symbol,"",PERIOD_CURRENT,false,true); return;
    }
    if(iscmd){ SendMsg("Não peguei esse comando.\n\n"+AjudaTxt()); return; }
+   // v12.6: pedidos em texto livre que o robô resolve sem IA
+   if(EhPedidoExplica(text)){ MemAdd(g_tgQuem,text); ExplicaEnvia(); return; }
+   if(EhPedidoTrades(text)){ MemAdd(g_tgQuem,text); TradesEnvia(true); return; }
+   if(EhPedidoPodes(text)){ MemAdd(g_tgQuem,text); SendMsg(PodesTxt()); return; }
+   { OrdemPend op; if(OrdemDeTexto(text,op) && op.tipo>0){ MemAdd(g_tgQuem,text); if(!TgDono()){ SendMsg("Ordem só o Vitor pode mandar 🙏"); return; } OrdemPropoe(op); return; } }
    if(EhSoNoticia(text)){ MemAdd(g_tgQuem,text); SendMsg(NoticiasTxt()); return; }
    string fsy; ENUM_TIMEFRAMES ftf;
    if(ParseAlvo(text,false,fsy,ftf)) ChatIA(text,"",fsy,ftf);
@@ -3589,8 +3721,8 @@ bool CmdDeOutroBot(string t,string user)
    string suf=StringSubstr(head,at+1), u=user; StringToLower(suf); StringToLower(u);
    return suf!=u;
 }
-void TgContexto(string chat,bool grupo,string quem){ g_tgReply=chat; g_tgEmGrupo=grupo; g_tgQuem=grupo?(quem!=""?quem:"alguém do grupo"):"Vitor"; }
-void TgContextoLimpa(){ g_tgReply=""; g_tgEmGrupo=false; g_tgQuem="Vitor"; }
+void TgContexto(string chat,bool grupo,string quem,string fromId=""){ g_tgReply=chat; g_tgEmGrupo=grupo; g_tgFromId=fromId; g_tgQuem=grupo?(quem!=""?quem:"alguém do grupo"):"Vitor"; }
+void TgContextoLimpa(){ g_tgReply=""; g_tgEmGrupo=false; g_tgFromId=""; g_tgQuem="Vitor"; }
 // renova a trava de quem lê o chat durante respostas demoradas (IA), pra outro gráfico não pegar a vez
 void TgMasterRenova(){ if(g_tgMaster && GlobalVariableCheck("APROF_TGM_ID") && GlobalVariableGet("APROF_TGM_ID")==g_inst) GlobalVariableSet("APROF_TGM_T",(double)TimeLocal()); }
 // offset mais novo gravado por qualquer gráfico (evita responder duas vezes a mesma mensagem)
@@ -3655,7 +3787,7 @@ void TgPoll()
                g_cfgGrupo=chat; CfgSalva("telegram_grupo_id",chat);
                Print("ALIEN: grupo liberado e salvo em MQL5\\Files\\ALIEN_config.txt");
                if(mudou) TgEstadoSave(); mudou=false;
-               TgContexto(chat,true,quem);
+               TgContexto(chat,true,quem,fromId);
                SendMsg("Pronto, liberei este grupo ✅ Aqui eu respondo comandos (/status, /analise...), quando me marcam (@"+BotUser()+") ou quando respondem uma mensagem minha. Os avisos automáticos continuam só no privado do Vitor.");
                TgContextoLimpa();
             }
@@ -3670,13 +3802,13 @@ void TgPoll()
             // a última versão da foto é a maior
             string ph=StringSubstr(seg,fp); int fe=StringFind(ph,"]"); if(fe>0) ph=StringSubstr(ph,0,fe);
             string fid=""; int q=0; while(true){ int z=StringFind(ph,"\"file_id\":\"",q); if(z<0) break; fid=JDecode(ph,z+10); q=z+1; }
-            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); FotoHandle(chat,fid,SemMencao(cap,BotUser())); TgContextoLimpa(); TgMasterRenova(); }
+            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem,fromId); FotoHandle(chat,fid,SemMencao(cap,BotUser())); TgContextoLimpa(); TgMasterRenova(); }
             continue;
          }
          if(vp>=0)
          {
             string fid=JStrKey(StringSubstr(seg,vp),"file_id");
-            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); VozHandle(chat,fid); TgContextoLimpa(); TgMasterRenova(); }
+            if(ChatAutorizado(chat) && fid!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem,fromId); VozHandle(chat,fid); TgContextoLimpa(); TgMasterRenova(); }
             continue;
          }
          text=JStrKey(seg,"text");
@@ -3691,7 +3823,7 @@ void TgPoll()
             if(text=="") text="oi";
          }
       }
-      if(chat!="" && text!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem); TgHandle(chat,text); TgContextoLimpa(); TgMasterRenova(); }
+      if(chat!="" && text!=""){ if(mudou) TgEstadoSave(); mudou=false; TgContexto(chat,grupo,quem,fromId); TgHandle(chat,text); TgContextoLimpa(); TgMasterRenova(); }
    }
    if(mudou) TgEstadoSave();
 }
@@ -3703,7 +3835,7 @@ void TgPreAlerta()
    LoadNews(); datetime now=TimeTradeServer();
    for(int i=0;i<ArraySize(g_news);i++)
    {
-      if(g_news[i].imp<3 || StringFind(InpPreAlertaMoedas,g_news[i].cur)<0) continue;
+      if(g_news[i].imp<3 || StringFind(InpPreAlertaMoedas,g_news[i].cur)<0 || AlertaMudo("noticia")) continue;
       long d=(long)(g_news[i].t-now); if(d<=0 || d>InpPreAlertaMin*60) continue;
       string key="|"+IntegerToString((long)g_news[i].id)+"|"; if(StringFind(g_alertados,key)>=0) continue;
       g_alertados+=IntegerToString((long)g_news[i].id)+"|"; TgEstadoSave();
@@ -3749,7 +3881,7 @@ string   g_verArq="ALIEN_veredictos.csv";
 string   g_pausaArq="ALIEN_pausa.txt";
 string   g_verHdr="hora;simbolo;bid;veredito;sessao;d1;h4;h1;m15;m5;m1;nota;pts;entrada;stop;res15;res60;origem";
 
-bool TradeAtivo(){ return InpTradeEnabled && !g_cfgAssistente && !g_tradePausa; }
+bool TradeAtivo(){ return (InpTradeEnabled && !g_cfgAssistente && !g_tradePausa) || AutonomoAtivo(); }   // v12.6: autônomo só em DEMO
 
 void PausaLoad()
 {
@@ -4307,7 +4439,7 @@ bool VolteiPode()
    return GlobalVariableSetOnCondition(g,now,old);
 }
 void VolteiMarca(){ ArqGrava("ALIEN_voltei.txt",IntegerToString((long)TimeGMT())); }
-string ModoTxt(){ return TradeAtivo()?"operando na demo, dentro dos limites":(g_tradePausa?"pausado (você mandou pausar)":"modo assistente: só analiso e aviso, não mando ordem"); }
+string ModoTxt(){ return PorAutonomo()?"AUTÔNOMO na demo: decido e opero sozinho, dentro das regras":TradeAtivo()?"operando na demo, dentro dos limites":(g_tradePausa?"pausado (você mandou pausar)":"modo assistente: só analiso e aviso, não mando ordem"); }
 void ParadaInit()
 {
    g_ligadoBR=TimeToString(AgoraBR(),TIME_MINUTES);
@@ -4338,7 +4470,7 @@ void ParadaInit()
 string TgKbFixo()
 {
    return "{\"keyboard\":[[{\"text\":\"📰 Notícias\"},{\"text\":\"📊 Análise\"},{\"text\":\"🧭 Plano\"}],"
-          "[{\"text\":\"🗓️ Agenda\"},{\"text\":\"📸 Foto\"},{\"text\":\"ℹ️ Status\"}],[{\"text\":\"⏸️ Pausa\"},{\"text\":\"▶️ Retoma\"}]],"
+          "[{\"text\":\"🗓️ Agenda\"},{\"text\":\"📸 Foto\"},{\"text\":\"ℹ️ Status\"}],[{\"text\":\"🎓 Explica\"},{\"text\":\"📒 Trades\"},{\"text\":\"🔔 Alertas\"}],[{\"text\":\"⏸️ Pausa\"},{\"text\":\"▶️ Retoma\"}]],"
           "\"resize_keyboard\":true,\"is_persistent\":true}";
 }
 string TgKbSimNao(string sim,string cbSim,string nao,string cbNao)
@@ -4360,6 +4492,9 @@ string BotaoCmd(string t)
    if(o=="STATUS")   return "/status";
    if(o=="PAUSA")    return "/pausa";
    if(o=="RETOMA")   return "/retoma";
+   if(o=="EXPLICA")  return "/explica";
+   if(o=="TRADES")   return "/trades";
+   if(o=="ALERTAS")  return "/alertas";
    return "";
 }
 void PedeConfirmaPausa(bool pausar)
@@ -4523,9 +4658,10 @@ void ChatGeral(string pergunta)
 {
    int w=AIEsperaSeg(); if(w>0){ SendMsg(StringFormat("Calma, a IA tá no limite. Tenta de novo em %d s.",w)); return; }
    string agora=CtxIA(pergunta,EhPerguntaAgenda(pergunta),EhPerguntaAbertura(pergunta));
-   string r=AIAskEx(SysGeral()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
+   string r=AIAskEx(SysGeral()+AcoesSysTxt()+GrupoNota(),MemTxt()+agora+QuemMsg()+":\n"+pergunta,500,false,false,0.7);
    if(r==""){ SendMsg(AIFalhaTxt()); return; }
    r=AISemVeredito(SemCamposCrus(r));
+   r=AcoesProcessa(r);
    if(!g_tgEmGrupo) FatoTalvez(pergunta);
    MemAdd(g_tgQuem,pergunta); MemAdd("Alier",r);
    SendMsg(r);
@@ -4587,6 +4723,7 @@ void ProTipoMarca(string tipo)
 void ProEnvia(string tipo,string key,int dir,double preco,string msg)
 {
    if(StringFind(g_proKeys,"|"+key+"|")>=0) return;
+   if(AlertaMudo(tipo)) return;                     // v12.6: o Vitor silenciou esse tipo
    if(g_proMudoAte>0 && TimeCurrent()<g_proMudoAte) return;
    if(!ProTipoLivre(tipo)) return;
    if(ProNaHora()>=MathMax(InpAlertasMaxHora,1)) return;
@@ -4651,7 +4788,7 @@ void ProativoBar()
    }
    // setup completo 7/7
    Plano b=MelhorPlano();
-   if(PlanoValido(b) && b.score>=InpScoreTrade)
+   if(PlanoValido(b) && b.score>=NotaAlertaMin())
    {
       int ok=0; for(int i=0;i<7;i++) if(b.pts[i]) ok++;
       if(ok>=7)
@@ -5106,7 +5243,7 @@ string MercadoAgoraTxt(datetime gmt,bool semTick,datetime ultTickGmt)
 int TimeDayOfWeekX(datetime t){ MqlDateTime d; TimeToStruct(t,d); return d.day_of_week; }
 string RoboLinhaIA()
 {
-   string modo=TradeAtivo()?"operando (manda ordens, dentro dos limites)":(g_tradePausa?"pausado pelo /pausa (não manda ordem)":"modo assistente (só analisa e avisa, não manda ordem)");
+   string modo=PorAutonomo()?"AUTÔNOMO na demo (decide e opera sozinho, com as regras do robô; aprende pelos resultados)":TradeAtivo()?"operando (manda ordens, dentro dos limites)":(g_tradePausa?"pausado pelo /pausa (não manda ordem)":"modo assistente (só analisa e avisa, não manda ordem)");
    return StringFormat("ROBÔ: você é o Alier v%s no %s %s, conta %s, %s. Hoje: %d trades, %d stops, resultado $%+.2f. Posições abertas: %d.",
       APROF_VER,_Symbol,StringSubstr(EnumToString((ENUM_TIMEFRAMES)_Period),7),
       AccountInfoInteger(ACCOUNT_TRADE_MODE)==ACCOUNT_TRADE_MODE_DEMO?"DEMO":"REAL",modo,g_tradesHoje,g_stopsHoje,g_netHoje,PositionsTotal());
@@ -5240,6 +5377,10 @@ string CtxIA(string pergunta,bool agenda,bool semana)
    datetime utG=(ut>0?(datetime)(ut-SrvOffsetSeg()):0);
    datetime muda; int st=GradeOuro(gmt,muda);
    string s=MercadoAgoraTxt(gmt,semTick,utG)+"\n"+SessaoLinhaIA(gmt,semTick)+"\n"+RoboLinhaIA()+"\n";
+   // v12.6: trades de hoje, regras do Vitor, aprendizado ao vivo e o conhecimento do projeto
+   s+=TradesHojeIA()+AdaptCompactoIA();
+   if(!g_tgEmGrupo){ string rg=RegrasTxt(); if(StringFind(rg,"ainda não")<0) s+=rg; }
+   s+="CONHECIMENTO DO PROJETO (use só estes números):\n"+ConhecimentoTxt()+"\n";
    if(agenda) s+=AgendaSemanaIA(true);
    if(semana){ string w=SemanaIA(semTick && st==2); if(w!="") s+=w+"\n"; }
    return s+"\n";
@@ -5248,13 +5389,1033 @@ string RegraContextoIA(bool abertura)
 {
    string r=" O bloco AGORA diz o dia da semana, a data e a hora de Brasília, se o mercado está aberto ou fechado e quando reabre: use exatamente isso e nunca calcule dia ou horário por conta própria (hoje é o dia escrito lá; não fale 'antes de domingo' se hoje é domingo). "
             "Você TEM o calendário econômico do MT5 (bloco AGENDA e campos de notícia): nunca diga que não vê notícias ou que não tem calendário; se a lista estiver vazia, diga que não tem notícia forte/média marcada. "
-            "Você sabe a versão, o modo da conta e os trades de hoje pelo bloco ROBÔ. "
+            "Você sabe a versão, o modo da conta e os trades de hoje pelos blocos ROBÔ e TRADES HOJE (cada trade com hora, lado, entrada, stop, alvo, saída e resultado): nunca diga que não guardou os trades. "
             "Não invente horário, preço, nível, dado econômico ou notícia que não esteja no contexto; se não estiver lá, diga que não sabe.";
    if(abertura) r+=" Se perguntarem o que esperar da abertura/semana: dê um plano curto de cenários (até 6 frases) usando só os níveis do bloco SEMANA (tipo 'se abrir acima de X...', 'se abrir abaixo de Y...'), diga que é observação, não certeza, cite a notícia forte mais próxima da AGENDA, e lembre do risco de gap e spread largo na abertura: melhor evitar os primeiros 15-30 min.";
    return r;
 }
 // linha curta pros sinais automáticos (AIAsk)
 string AgoraCurtoIA(){ return "AGORA: "+DiaHoraBR(AgoraBR(),true)+" (Brasília). "+(MercadoFechado()?"Mercado FECHADO.":"Mercado aberto.")+"\n"; }
+
+//====================================================================
+// v12.6 — Alier que EXPLICA e que FAZ (lista fechada de ações seguras)
+//  /explica  /aula <tema>  /guia  /podes  /trades  /alertas  /linha  /limpo  /painel
+//  /regra  /lembrete  /mudo  /som  /nota  /simbolo  /print
+//  A IA pode pedir uma ação com a etiqueta [ACAO:nome|param|param]. Só roda o que está na lista.
+//  Mudar algo = só o Vitor (privado, ou o from.id dele no grupo). Ordem = sempre com Confirmar.
+//====================================================================
+string g_prefArq="ALIEN_prefs.txt", g_regrasArq="ALIEN_regras.txt", g_lembArq="ALIEN_lembretes.txt", g_linhasArq="ALIEN_linhas.txt";
+string g_mudos="|";                   // tipos de aviso silenciados: |varrida|bos|...
+int    g_notaAlerta=0;                // 0 = padrão (InpScoreTrade)
+string g_simFoco="";                  // símbolo padrão do /analise
+
+bool TgDono(){ if(!g_tgEmGrupo) return true; return g_tgFromId!="" && g_tgFromId==g_cfgTgChat; }
+string Baixo(string t){ string u=AISemAcento(t); StringToLower(u); return u; }
+string NaoDono(){ return "Isso muda coisa no robô, então só o Vitor pode pedir 🙏 Mas pode perguntar o que quiser."; }
+
+// ---------------- política das ações (espelhada em teste/check_mocks.py) ----------------
+// 0 = pode, 1 = não existe na lista, 2 = só o dono, 3 = ordem (só dono e sempre com Confirmar)
+int AcaoPolitica(string nome,bool dono)
+{
+   string n=nome; StringToLower(n); StringTrimLeft(n); StringTrimRight(n);
+   string ler[]={"alertas","regras","explica","aula","guia","trades","podes","print","lembretes","aprendizado"};
+   string mud[]={"alerta","alerta_remove","linha","linha_remove","limpo","painel","nota_alerta","mudo","som","pausa","retoma","regra","regra_remove","lembrete","simbolo","balao"};
+   string ord[]={"ordem","fechar","stop","alvo"};
+   for(int i=0;i<ArraySize(ler);i++) if(n==ler[i]) return 0;
+   for(int i=0;i<ArraySize(mud);i++) if(n==mud[i]) return dono?0:2;
+   for(int i=0;i<ArraySize(ord);i++) if(n==ord[i]) return dono?3:2;
+   return 1;
+}
+// tira as etiquetas [ACAO:...] do texto; devolve quantas achou (máx. 3)
+int AcoesExtrai(string txt,string &nomes[],string &params[],string &limpo)
+{
+   ArrayResize(nomes,0); ArrayResize(params,0); limpo=txt;
+   int n=0;
+   while(true)
+   {
+      int a=StringFind(limpo,"[ACAO:"); if(a<0) a=StringFind(limpo,"[AÇÃO:"); if(a<0) break;
+      int pre=(StringSubstr(limpo,a,6)=="[ACAO:")?6:6;
+      int b=StringFind(limpo,"]",a); if(b<0){ limpo=StringSubstr(limpo,0,a); break; }
+      string corpo=StringSubstr(limpo,a+pre,b-a-pre);
+      limpo=StringSubstr(limpo,0,a)+StringSubstr(limpo,b+1);
+      if(n>=3) continue;
+      string nm=corpo, pr=""; int k=StringFind(corpo,"|"); if(k>=0){ nm=StringSubstr(corpo,0,k); pr=StringSubstr(corpo,k+1); }
+      StringTrimLeft(nm); StringTrimRight(nm); StringToLower(nm);
+      ArrayResize(nomes,n+1); ArrayResize(params,n+1); nomes[n]=nm; params[n]=pr; n++;
+   }
+   StringTrimLeft(limpo); StringTrimRight(limpo);
+   return n;
+}
+// executa as etiquetas da resposta da IA; devolve o texto limpo + o que foi feito
+string AcoesProcessa(string r)
+{
+   string nm[],pr[],limpo; int n=AcoesExtrai(r,nm,pr,limpo);
+   if(n==0) return r;
+   string feito="";
+   for(int i=0;i<n;i++)
+   {
+      string res=AcaoExecuta(nm[i],pr[i]);
+      if(res!="") feito+=(feito==""?"":"\n")+res;
+   }
+   return limpo+(feito!=""?"\n\n"+feito:"");
+}
+string AcaoP(string params,int i){ string p[]; int n=StringSplit(params,'|',p); if(i>=n) return ""; string v=p[i]; StringTrimLeft(v); StringTrimRight(v); return v; }
+double NumDe(string s){ StringReplace(s,",","."); StringTrimLeft(s); StringTrimRight(s); return StringToDouble(s); }
+string AcaoExecuta(string nome,string params)
+{
+   int pol=AcaoPolitica(nome,TgDono());
+   Print("ALIEN ação pedida: ",nome," -> ",pol==0?"ok":(pol==1?"recusada (fora da lista)":(pol==2?"recusada (não é o dono)":"ordem com confirmação")));
+   CsvAppend("ALIEN_acoes_log.csv","hora_brasilia;quem;acao;params;resultado",StringFormat("%s;%s;%s;%s;%d",TimeToString(AgoraBR(),TIME_DATE|TIME_MINUTES),CsvLimpo(g_tgQuem),CsvLimpo(nome),CsvLimpo(params),pol));
+   if(pol==1) return "🤷 Isso eu não sei fazer. Manda /podes pra ver a lista.";
+   if(pol==2) return NaoDono();
+   if(pol==3) return OrdemDeAcao(nome,params);
+   if(nome=="alerta"){ double px=NumDe(AcaoP(params,0)); if(px<=0) return "Faltou o preço do alerta."; AlertaAdd(px); UsuarioDesenha(); return "🔔 Alerta em "+Fmt(px)+" salvo (te aviso aqui e marquei uma linha pontilhada)."; }
+   if(nome=="alerta_remove"){ string a=AcaoP(params,0); int k=AlertaRemove(Baixo(a)=="todos"||a==""?0:NumDe(a)); UsuarioDesenha(); return k>0?StringFormat("🗑️ Tirei %d alerta(s).",k):"Não achei esse alerta. Ativos: "+AlertaLista(); }
+   if(nome=="alertas") return "🔔 Alertas ativos: "+AlertaLista();
+   if(nome=="linha"){ double px=NumDe(AcaoP(params,0)); if(px<=0) return "Faltou o preço da linha."; string t=AcaoP(params,1); LinhaAdd(px,t); UsuarioDesenha(); return "📏 Linha em "+Fmt(px)+(t!=""?" ("+t+")":"")+" desenhada."; }
+   if(nome=="linha_remove"){ string a=AcaoP(params,0); int k=LinhaRemove(Baixo(a)=="todas"||a==""?0:NumDe(a)); UsuarioDesenha(); return k>0?StringFormat("🧽 Tirei %d linha(s).",k):"Não achei essa linha."; }
+   if(nome=="limpo"){ string a=Baixo(AcaoP(params,0)); g_modoLimpo=!(a=="off"||a=="nao"||a=="desliga"||a=="0"); PrefSalva(); RotulosArruma(); ChartRedraw(0);
+      return g_modoLimpo?"🧹 Modo limpo ligado: deixei só os níveis principais, o plano e as suas linhas.":"Modo limpo desligado: voltei todas as marcas."; }
+   if(nome=="painel") return PainelBloco(AcaoP(params,0),AcaoP(params,1));
+   if(nome=="balao"){ string a=Baixo(AcaoP(params,0)); bool on=!(a=="off"||a=="nao"||a=="desliga"||a=="0"); if(!on){ g_obsTxt=""; ObsApaga(); } return on?"O balão volta na próxima observação da IA.":"Tirei o balão da IA do gráfico."; }
+   if(nome=="nota_alerta"){ int v=(int)NumDe(AcaoP(params,0)); if(v<0||v>10) return "A nota vai de 0 a 10."; g_notaAlerta=v; PrefSalva(); return v==0?"Voltei a nota dos avisos pro padrão ("+IntegerToString(InpScoreTrade)+").":StringFormat("Beleza: só te aviso de setup com nota %d ou mais.",v); }
+   if(nome=="mudo" || nome=="som") return MudoMuda(AcaoP(params,0),nome=="mudo");
+   if(nome=="pausa"){ PedeConfirmaPausa(true); return ""; }
+   if(nome=="retoma"){ PedeConfirmaPausa(false); return ""; }
+   if(nome=="regra"){ string t=AcaoP(params,0); if(StringLen(t)<4) return "Faltou a regra."; RegraAdd(t); return "📌 Regra anotada: \""+t+"\". Se você abrir trade contra ela, eu aviso na hora."; }
+   if(nome=="regra_remove"){ string a=AcaoP(params,0); int k=RegraRemove(Baixo(a)=="todas"||a==""?0:(int)NumDe(a)); return k>0?StringFormat("Tirei %d regra(s).",k):"Não achei essa regra. "+RegrasTxt(); }
+   if(nome=="regras") return RegrasTxt();
+   if(nome=="lembrete") return LembreteAdd(AcaoP(params,0),AcaoP(params,1));
+   if(nome=="lembretes") return LembretesTxt();
+   if(nome=="simbolo"){ string s=SimboloDe(AcaoP(params,0),true); if(s==""||!TemCotacao(s)) return "Não achei cotação desse símbolo no seu MT5."; g_simFoco=(s==_Symbol?"":s); PrefSalva(); return "🔎 Pronto: o /analise agora olha o "+s+" por padrão."; }
+   if(nome=="print"){ string s=AcaoP(params,0), t=AcaoP(params,1); string sy=s==""?_Symbol:SimboloDe(s,true); ENUM_TIMEFRAMES tf=TfDe(t); if(sy=="") sy=_Symbol; if(tf==PERIOD_CURRENT) tf=(ENUM_TIMEFRAMES)_Period;
+      if(sy==_Symbol && tf==(ENUM_TIMEFRAMES)_Period){ TgFoto(FotoLegenda()); return ""; } if(!TemCotacao(sy)) return "Sem cotação de "+sy+"."; FotoTF(sy,tf,sy+" "+TfNome(tf)); return ""; }
+   if(nome=="explica"){ ExplicaEnvia(); return ""; }
+   if(nome=="aula") return AulaTxt(AcaoP(params,0));
+   if(nome=="guia") return GuiaTxt();
+   if(nome=="trades"){ TradesEnvia(false); return ""; }
+   if(nome=="podes") return PodesTxt();
+   if(nome=="aprendizado") return AdaptTabelaTxt();
+   return "";
+}
+// texto que vai pra IA (só no privado ou pro dono): o que ela pode pedir
+string AcoesSysTxt()
+{
+   if(!TgDono()) return " Quem escreveu não é o Vitor: não use etiquetas [ACAO:...] que mudam coisas; só explique.";
+   return " AÇÕES: se a pessoa PEDIR pra você fazer algo, coloque no fim da resposta UMA etiqueta por ação, exatamente assim: [ACAO:nome|param|param]. "
+          "Lista fechada (nada fora dela): alerta|preço ; alerta_remove|preço ou todos ; alertas ; linha|preço|texto ; linha_remove|preço ou todas ; limpo|on ou off ; "
+          "painel|ia,niveis,confluencia,conta,tudo ou mini|on ou off ; balao|on ou off ; nota_alerta|0-10 ; mudo|varrida,bos,choch,bloco,vwap,setup,noticia ou todos ; som|tipo ; "
+          "pausa ; retoma ; regra|texto da regra ; regra_remove|número ou todas ; regras ; lembrete|HH:MM|texto ; lembretes ; simbolo|SÍMBOLO ; print|SÍMBOLO|TF ; "
+          "explica ; aula|tema ; guia ; trades ; podes ; aprendizado ; ordem|compra ou venda|lote|stop|alvo ; fechar|tudo, metade ou SÍMBOLO ; stop|zero ou preço ; alvo|preço. "
+          "Ordem, fechar, stop e alvo NUNCA executam direto: o robô mostra um resumo e o Vitor aperta Confirmar. Use preço só do contexto ou o que ele falou. "
+          "Diga em uma frase o que vai fazer. Se não estiver na lista, explique o que dá pra fazer.";
+}
+// ---------------- preferências persistidas ----------------
+void PrefSalva()
+{
+   string s=StringFormat("limpo=%d\r\npn_ia=%d\r\npn_niv=%d\r\npn_conf=%d\r\npn_conta=%d\r\npn_oculto=%d\r\nnota_alerta=%d\r\nmudos=%s\r\nsimbolo=%s\r\n",
+      g_modoLimpo,g_pnIA,g_pnNiv,g_pnConf,g_pnConta,g_pnOculto,g_notaAlerta,g_mudos,g_simFoco);
+   ArqGrava(g_prefArq,s);
+}
+void PrefLoad()
+{
+   string s=ArqLe(g_prefArq); if(s=="") return;
+   string l[]; int n=StringSplit(s,'\n',l);
+   for(int i=0;i<n;i++)
+   {
+      string x=l[i]; StringReplace(x,"\r",""); int e=StringFind(x,"="); if(e<=0) continue;
+      string k=StringSubstr(x,0,e), v=StringSubstr(x,e+1); bool b=(v=="1"||v=="true");
+      if(k=="limpo") g_modoLimpo=b; else if(k=="pn_ia") g_pnIA=b; else if(k=="pn_niv") g_pnNiv=b; else if(k=="pn_conf") g_pnConf=b;
+      else if(k=="pn_conta") g_pnConta=b; else if(k=="pn_oculto") g_pnOculto=b; else if(k=="nota_alerta") g_notaAlerta=(int)StringToInteger(v);
+      else if(k=="mudos") g_mudos=(v==""?"|":v); else if(k=="simbolo") g_simFoco=v;
+   }
+}
+string PainelBloco(string bloco,string onoff)
+{
+   string b=Baixo(bloco), o=Baixo(onoff); bool on=!(o=="off"||o=="nao"||o=="esconde"||o=="0"||o=="desliga");
+   if(b=="mini"){ g_painelMin=on; g_pnOculto=false; }
+   else if(b=="tudo"||b=="painel"){ g_pnOculto=!on; if(on){ g_pnIA=g_pnNiv=g_pnConf=g_pnConta=true; g_painelMin=false; } }
+   else if(StringFind(b,"ia")==0) g_pnIA=on;
+   else if(StringFind(b,"niv")==0) g_pnNiv=on;
+   else if(StringFind(b,"conf")==0) g_pnConf=on;
+   else if(StringFind(b,"conta")==0||StringFind(b,"hoje")==0||StringFind(b,"disc")==0) g_pnConta=on;
+   else return "Os blocos do painel são: ia, niveis, confluencia, conta, tudo ou mini.";
+   PrefSalva(); Painel(); ChartRedraw(0);
+   return "🧩 Painel: "+bloco+(on?" aparecendo.":" escondido.");
+}
+// ---------------- avisos silenciados ----------------
+bool AlertaMudo(string tipo){ return StringFind(g_mudos,"|todos|")>=0 || StringFind(g_mudos,"|"+tipo+"|")>=0; }
+string MudoMuda(string tipo,bool mudo)
+{
+   string t=Baixo(tipo); StringTrimLeft(t); StringTrimRight(t);
+   if(t=="noticias"||t=="noticia") t="noticia"; if(t=="varridas") t="varrida"; if(t=="blocos") t="bloco";
+   string ok[]={"varrida","bos","choch","bloco","vwap","setup","noticia","todos"}; bool val=false;
+   for(int i=0;i<ArraySize(ok);i++) if(t==ok[i]) val=true;
+   if(!val) return "Tipos de aviso: varrida, bos, choch, bloco, vwap, setup, noticia ou todos.";
+   if(t=="todos" && !mudo) g_mudos="|";
+   else if(mudo){ if(StringFind(g_mudos,"|"+t+"|")<0) g_mudos+=t+"|"; }
+   else StringReplace(g_mudos,"|"+t+"|","|");
+   PrefSalva();
+   return mudo?"🔕 Silenciei os avisos de "+t+".":"🔔 Voltei os avisos de "+t+".";
+}
+int NotaAlertaMin(){ return g_notaAlerta>0?g_notaAlerta:InpScoreTrade; }
+// ---------------- alertas: remover + linha no gráfico ----------------
+int AlertaRemove(double preco)
+{
+   int h=FileOpen(g_alertaArq,FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ); if(h==INVALID_HANDLE) return 0;
+   string keep="preco;ativo\r\n"; int k=0; if(!FileIsEnding(h)) FileReadString(h);
+   while(!FileIsEnding(h))
+   {
+      string l=FileReadString(h); if(l=="") continue; string p[]; if(StringSplit(l,';',p)<2){ continue; }
+      if(p[1]=="1" && (preco<=0 || MathAbs(StringToDouble(p[0])-preco)<MathMax(_Point,0.0001)*5)){ k++; continue; }
+      keep+=l+"\r\n";
+   }
+   FileClose(h);
+   int w=FileOpen(g_alertaArq,FILE_WRITE|FILE_TXT|FILE_ANSI); if(w!=INVALID_HANDLE){ FileWriteString(w,keep); FileClose(w); }
+   return k;
+}
+void LinhaAdd(double px,string t){ CsvLimpo(t); ArqGrava(g_linhasArq,ArqLe(g_linhasArq)+_Symbol+";"+DoubleToString(px,_Digits)+";"+CsvLimpo(t)+"\n"); }
+int LinhaRemove(double px)
+{
+   string s=ArqLe(g_linhasArq), l[], o=""; int n=StringSplit(s,'\n',l), k=0;
+   for(int i=0;i<n;i++){ string p[]; if(StringSplit(l[i],';',p)<2) continue; if(p[0]==_Symbol && (px<=0 || MathAbs(StringToDouble(p[1])-px)<_Point*5)){ k++; continue; } o+=l[i]+"\n"; }
+   ArqGrava(g_linhasArq,o); return k;
+}
+void UsuarioDesenha()
+{
+   DelPrefix("USR");
+   if(g_noDraw) return;
+   datetime tR=TimeCurrent()+PeriodSeconds((ENUM_TIMEFRAMES)_Period)*3;
+   string s=ArqLe(g_linhasArq), l[]; int n=StringSplit(s,'\n',l), j=0;
+   for(int i=0;i<n;i++)
+   {
+      string p[]; if(StringSplit(l[i],';',p)<2 || p[0]!=_Symbol) continue;
+      double px=StringToDouble(p[1]); if(px<=0) continue; string t=ArraySize(p)>2?p[2]:"";
+      ObjHLinha("USR_L"+IntegerToString(j),px,clrDeepSkyBlue,STYLE_SOLID,t);
+      ObjTxtGraf("USR_Lt"+IntegerToString(j),tR,px,"📏 "+(t!=""?t+" ":"")+Fmt(px),clrDeepSkyBlue,8,ANCHOR_LEFT_LOWER); j++;
+   }
+   int h=FileOpen(g_alertaArq,FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
+   if(h!=INVALID_HANDLE)
+   {
+      if(!FileIsEnding(h)) FileReadString(h); int a=0;
+      while(!FileIsEnding(h)){ string x=FileReadString(h); string p[]; if(StringSplit(x,';',p)<2 || p[1]!="1") continue; double px=StringToDouble(p[0]); if(px<=0) continue;
+         ObjHLinha("USR_A"+IntegerToString(a),px,clrOrange,STYLE_DOT,"alerta"); ObjTxtGraf("USR_At"+IntegerToString(a),tR,px,"🔔 alerta "+Fmt(px),clrOrange,8,ANCHOR_LEFT_UPPER); a++; }
+      FileClose(h);
+   }
+   ChartRedraw(0);
+}
+// ---------------- regras pessoais (disciplina) ----------------
+void RegraAdd(string t){ ArqGrava(g_regrasArq,ArqLe(g_regrasArq)+CsvLimpo(t)+"\n"); }
+void RegrasLe(string &r[]){ ArrayResize(r,0); string l[]; int n=StringSplit(ArqLe(g_regrasArq),'\n',l); for(int i=0;i<n;i++){ string x=l[i]; StringReplace(x,"\r",""); StringTrimLeft(x); StringTrimRight(x); if(x=="") continue; int k=ArraySize(r); ArrayResize(r,k+1); r[k]=x; } }
+int RegraRemove(int idx){ string r[]; RegrasLe(r); int n=ArraySize(r); if(n==0) return 0; string o=""; int k=0; for(int i=0;i<n;i++){ if(idx<=0 || i==idx-1){ k++; continue; } o+=r[i]+"\n"; } ArqGrava(g_regrasArq,o); return k; }
+string RegrasTxt(){ string r[]; RegrasLe(r); if(ArraySize(r)==0) return "Você ainda não me deu nenhuma regra. Ex.: \"não me deixa operar na Ásia\"."; string s="📌 Suas regras:\n"; for(int i=0;i<ArraySize(r);i++) s+=IntegerToString(i+1)+". "+r[i]+"\n"; return s; }
+// devolve a regra quebrada agora (ou ""). volume = lote do trade (0 se não souber)
+string RegraQuebrada(double volume)
+{
+   string r[]; RegrasLe(r); if(ArraySize(r)==0) return "";
+   datetime now=TimeTradeServer(); if(now==0) now=TimeCurrent();
+   int h=HourOf(now); MqlDateTime b; TimeToStruct(AgoraBR(),b);
+   for(int i=0;i<ArraySize(r);i++)
+   {
+      string u=Baixo(r[i]);
+      if(StringFind(u,"asia")>=0 && h>=InpAsiaIni && h<InpAsiaFim) return r[i]+" (agora é sessão da Ásia)";
+      if(StringFind(u,"domingo")>=0 && b.day_of_week==0) return r[i]+" (hoje é domingo)";
+      if(StringFind(u,"noticia")>=0 && NoticiaAviso(now)!="") return r[i]+" ("+NoticiaAviso(now)+")";
+      if(StringFind(u,"stop")>=0){ int p=StringFind(u,"stop"); int nn=0; for(int q=p-1;q>=0 && q>=p-4;q--){ ushort c=StringGetCharacter(u,q); if(c>='1'&&c<='9'){ nn=c-'0'; break; } } if(nn>0 && g_stopsHoje>=nn) return r[i]+StringFormat(" (já são %d stops hoje)",g_stopsHoje); }
+      int pa=StringFind(u,"antes das "); if(pa>=0){ int hh=(int)StringToInteger(StringSubstr(u,pa+10,2)); if(hh>0 && b.hour<hh) return r[i]+StringFormat(" (agora são %02d:%02d em Brasília)",b.hour,b.min); }
+      int pd=StringFind(u,"depois das "); if(pd>=0){ int hh=(int)StringToInteger(StringSubstr(u,pd+11,2)); if(hh>0 && b.hour>=hh) return r[i]+StringFormat(" (agora são %02d:%02d em Brasília)",b.hour,b.min); }
+      int pl=StringFind(u,"lote"); if(pl>=0 && volume>0){ string resto=StringSubstr(u,pl+4); StringReplace(resto,",","."); double mx=0; string w[]; int nw=StringSplit(resto,' ',w); for(int q=0;q<nw;q++){ double v=StringToDouble(w[q]); if(v>0){ mx=v; break; } } if(mx>0 && volume>mx+1e-9) return r[i]+StringFormat(" (lote %.2f)",volume); }
+   }
+   return "";
+}
+// ---------------- lembretes ----------------
+string LembreteAdd(string hhmm,string txt)
+{
+   int m=HHMMtoMin(hhmm); if(m<0||m>=1440) return "Manda a hora assim: 14:30.";
+   datetime br=AgoraBR(); datetime d0=br-(br%86400); datetime alvo=d0+m*60; if(alvo<=br) alvo+=86400;
+   if(StringLen(txt)<2) txt="lembrete";
+   ArqGrava(g_lembArq,ArqLe(g_lembArq)+IntegerToString((long)alvo)+";"+CsvLimpo(txt)+"\n");
+   return "⏰ Fechado: te lembro "+DiaHoraBR(alvo,false,true)+" (Brasília): "+txt;
+}
+string LembretesTxt(){ string l[]; int n=StringSplit(ArqLe(g_lembArq),'\n',l); string s=""; for(int i=0;i<n;i++){ string p[]; if(StringSplit(l[i],';',p)<2) continue; s+="⏰ "+DiaHoraBR((datetime)StringToInteger(p[0]),false,true)+" - "+p[1]+"\n"; } return s==""?"Nenhum lembrete marcado.":s; }
+void LembretesTimer()
+{
+   if(!TgOk() || (InpTgChat && !g_tgMaster)) return;
+   string s=ArqLe(g_lembArq); if(s=="") return;
+   string l[]; int n=StringSplit(s,'\n',l); string o=""; datetime br=AgoraBR(); bool mudou=false;
+   for(int i=0;i<n;i++)
+   {
+      string p[]; if(StringSplit(l[i],';',p)<2) continue;
+      if((datetime)StringToInteger(p[0])<=br){ SendMsg("⏰ Lembrete: "+p[1]); mudou=true; continue; }
+      o+=l[i]+"\n";
+   }
+   if(mudou) ArqGrava(g_lembArq,o);
+}
+// ---------------- texto comprido: quebra em mensagens ----------------
+void SendLongo(string t)
+{
+   while(StringLen(t)>3500)
+   {
+      int cut=3500; while(cut>2000 && StringGetCharacter(t,cut)!='\n') cut--;
+      SendMsg(StringSubstr(t,0,cut)); t=StringSubstr(t,cut+1);
+   }
+   if(t!="") SendMsg(t);
+}
+// ================= 1. ENSINAR =================
+string DistTxt(double lv,double bid)
+{
+   if(bid<=0 || lv<=0) return "";
+   double d=lv-bid; string p=TxtPts(lv,bid);
+   return StringFormat("%s pts %s",p,d>=0?"acima do preço":"abaixo do preço");
+}
+string NivelExplica(string nome)
+{
+   string u=Baixo(nome);
+   if(StringFind(u,"ontem")>=0) return StringFormat("o %s preço de ontem. Muita gente deixa stop ali, por isso o preço gosta de ir buscar.",StringFind(u,"max")>=0?"maior":"menor");
+   if(StringFind(u,"semana")>=0) return "extremo da semana passada: nível forte, costuma segurar ou ser caçado.";
+   if(StringFind(u,"asia")>=0) return "extremo da sessão da Ásia (madrugada). Londres costuma vir caçar esse ponto.";
+   if(StringFind(u,"londres")>=0) return "extremo da sessão de Londres. Nova York gosta de testar.";
+   if(StringFind(u,"nova york")>=0) return "extremo da última sessão de Nova York.";
+   if(StringFind(u,"topos iguais")>=0) return "dois topos na mesma altura = stops acumulados em cima (liquidez). Ímã de preço.";
+   if(StringFind(u,"fundos iguais")>=0) return "dois fundos na mesma altura = stops acumulados embaixo (liquidez). Ímã de preço.";
+   return "nível de liquidez.";
+}
+string ExplicaTxt()
+{
+   double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID); if(bid<=0 && ArraySize(g_r)>0) bid=g_r[0].close;
+   string s="🎓 O que tem no seu gráfico do "+_Symbol+" agora ("+DiaHoraBR(AgoraBR(),false,true)+", Brasília). Preço "+Fmt(bid)+".\n";
+   if(MercadoFechado()) s+="(Mercado fechado: é o desenho do último fechamento.)\n";
+   s+="\n📏 LINHAS DE LIQUIDEZ (amarela = acima, branca = abaixo; tracejada = já varrida)\n";
+   int nl=0;
+   for(int v=0;v<ArraySize(g_niv) && nl<12;v++)
+   {
+      if(g_niv[v].estado==ST_ROMPIDO) continue;
+      string est=g_niv[v].estado==ST_VARRIDA?" Já foi VARRIDA às "+HoraBRde(g_niv[v].tSweep)+" (o pavio passou e voltou: armadilha de stop).":"";
+      s+="• "+g_niv[v].nome+" "+Fmt(g_niv[v].preco)+" ("+DistTxt(g_niv[v].preco,bid)+"): "+NivelExplica(g_niv[v].nome)+est+"\n"; nl++;
+   }
+   if(nl==0) s+="• Nenhuma linha de liquidez intacta perto.\n";
+   if(g_engVWAP>0) s+="• Linha pontilhada \"Preço médio da sessão\" (VWAP) "+Fmt(g_engVWAP)+" ("+DistTxt(g_engVWAP,bid)+"): o preço médio pago hoje. Acima dela os compradores mandam; abaixo, os vendedores.\n";
+   double poc=(g_engPOC>0?g_engPOC:g_engPOCOntem); if(poc>0) s+="• Pontilhada prata \"Preço de maior volume\" "+Fmt(poc)+": onde mais negociaram. Funciona como ímã.\n";
+   int nb=ArraySize(g_bos);
+   if(nb>0)
+   {
+      s+="\n📐 ESTRUTURA (tracejado curto com texto)\n";
+      for(int k=MathMax(0,nb-3);k<nb;k++)
+         s+="• \""+RotuloBos(g_bos[k])+"\" em "+Fmt(g_bos[k].preco)+" às "+HoraBRde(g_bos[k].tBreak)+": "+(g_bos[k].choch?"o preço fechou do outro lado do último topo/fundo, CONTRA a direção que vinha (CHoCH). Pode ser virada; espera confirmar.":"o preço fechou além do último "+(g_bos[k].dir==1?"topo":"fundo")+" a favor da direção (BOS). A tendência curta seguiu.")+"\n";
+   }
+   string fv=""; int nf=0;
+   for(int m=ArraySize(g_fvg)-1;m>=0 && nf<3;m--){ if(g_fvg[m].filled) continue; fv+="• Caixa \"Vazio de preço\" "+TfNome(InpTFExec)+" de "+Fmt(g_fvg[m].bot)+" a "+Fmt(g_fvg[m].top)+" ("+DistTxt((g_fvg[m].top+g_fvg[m].bot)/2,bid)+"): o preço andou rápido e deixou um buraco ("+(g_fvg[m].dir==1?"de alta":"de baixa")+"). Ele costuma voltar pra preencher.\n"; nf++; }
+   int nh=0; for(int m=ArraySize(g_fvgH1)-1;m>=0 && nh<2;m--){ if(g_fvgH1[m].filled) continue; fv+="• Caixa grossa H1 de "+Fmt(g_fvgH1[m].bot)+" a "+Fmt(g_fvgH1[m].top)+": vazio de preço do H1 (mais forte que o do "+TfNome(InpTFExec)+").\n"; nh++; }
+   if(fv!="") s+="\n🟨 CAIXAS DE VAZIO (FVG)\n"+fv;
+   string ob=""; int no=0;
+   for(int i=ArraySize(g_obs)-1;i>=0 && no<3;i--){ if(g_obs[i].brk) continue; ob+="• Caixa \"Bloco de ordens\" de "+Fmt(g_obs[i].lo)+" a "+Fmt(g_obs[i].hi)+" ("+(g_obs[i].dir==1?"de compra":"de venda")+"): última vela contrária antes de um movimento forte. Quando o preço volta, costuma reagir.\n"; no++; }
+   if(ob!="") s+="\n🧱 BLOCOS DE ORDENS\n"+ob;
+   Plano b=MelhorPlano();
+   s+="\n🧭 PLANO (setas tracejadas e linhas do cenário)\n";
+   if(PlanoValido(b))
+      s+=StringFormat("• Melhor lado agora: %s, nota %d/10. Linha \"Entrada\" %s, linha vermelha STOP %s (se passar daí, a ideia morreu), linha verde ALVO %s (vale %.1fx o risco). As setas \"vem buscar liquidez\" e \"depois sobe/desce até aqui\" são CENÁRIO, não certeza.\n",
+         b.dir==1?"compra":"venda",b.score,Fmt(b.entry),Fmt(b.stop),Fmt(b.target),b.rr);
+   else s+="• Sem setup válido agora (alvo menor que 1,5x o risco). Sem plano = sem operação.\n";
+   if(b.score<InpScoreAmarelo || g_pare!="") s+="  (As linhas de entrada/stop/alvo só aparecem com nota "+IntegerToString(InpScoreAmarelo)+"+ e sem trava do dia.)\n";
+   string st; SessaoNota(TimeTradeServer()>0?TimeTradeServer():TimeCurrent(),st);
+   s+="\n🕐 HORÁRIO: "+st+(g_engKZ!=""?" · "+g_engKZ:"")+". Killzone = janela com mais volume (abertura de Londres e de NY). Fora dela tem mais armadilha.\n";
+   s+=StringFormat("\n📊 PAINEL: \"Tempos\" ▲ alta ▼ baixa ● de lado (D1 até M1). Quando o maior e o menor brigam, é melhor esperar. Barra de confluência: compra %d x venda %d (é uma lista de motivos, não previsão).\n",MathMax(g_efBuy,0),MathMax(g_efSell,0));
+   string al=AlertaLista(); if(al!="(nenhum)") s+="🔔 Linhas laranja pontilhadas = seus alertas: "+al+"\n";
+   if(ArqLe(g_linhasArq)!="") s+="📏 Linhas azuis = as que você pediu.\n";
+   s+="💬 Balão preto e amarelo = a última observação da IA (não é certeza).\n";
+   s+="\nQuer aprender um por um? /aula fvg, /aula liquidez, /aula bos, /aula bloco, /aula vwap, /aula killzone, /aula stop. Legenda curtinha: /guia";
+   return s;
+}
+void ExplicaEnvia()
+{
+   if(TgFoto("🎓 Seu gráfico agora. Explico cada marca na mensagem abaixo.")) {}
+   SendLongo(ExplicaTxt());
+   ObsSet("Mandei no Telegram o que é cada linha do gráfico.","🎓");
+}
+string AulaTxt(string tema)
+{
+   string t=Baixo(tema); StringTrimLeft(t); StringTrimRight(t);
+   if(t=="") return "Escolhe um tema: fvg, liquidez, varrida, bos, choch, bloco, vwap, killzone, stop, rr, sessoes, vela, disciplina.";
+   if(StringFind(t,"fvg")>=0||StringFind(t,"vazio")>=0||StringFind(t,"gap")>=0)
+      return "📚 FVG (vazio de preço)\nQuando 3 velas seguidas andam tão rápido que a 1ª e a 3ª não se tocam, sobra um buraco. O preço costuma voltar nele antes de seguir.\nNo painel: caixa com o texto \"Vazio de preço\" (fina = "+TfNome(InpTFExec)+", grossa = H1/M15). Amarela = de alta, prata = de baixa.\nComo usar: não compre no meio do nada; espere o preço voltar na caixa a favor da tendência maior e o M1 confirmar. Sozinho NÃO é sinal.";
+   if(StringFind(t,"liquid")>=0)
+      return "📚 Liquidez\nÉ onde tem muita ordem parada: máximas/mínimas de ontem, da Ásia, de Londres e topos/fundos iguais. Os grandes precisam dessas ordens, então o preço costuma ir buscar.\nNo painel: linhas amarelas (acima) e brancas (abaixo) com o nome.\nComo usar: alvo perto da liquidez do outro lado; cuidado em pôr stop exatamente atrás dela.";
+   if(StringFind(t,"varr")>=0||StringFind(t,"sweep")>=0)
+      return "📚 Varrida\nO pavio passa de um nível de liquidez e a vela FECHA de volta. Pegou os stops e voltou: muitas vezes é armadilha.\nNo painel: seta pequena + texto \"Varrida da máxima/mínima...\" e a linha fica tracejada.\nComo usar: depois de varrer embaixo, procure compra só se a estrutura virar (CHoCH). Nunca entre só porque varreu.";
+   if(StringFind(t,"choch")>=0)
+      return "📚 CHoCH (mudança de direção)\nO preço vinha caindo e fecha ACIMA do último topo (ou o contrário). É o primeiro sinal de que pode virar.\nNo painel: tracejado com \"Mudança de direção pra cima/baixo\".\nComo usar: é aviso, não entrada. Espere um reteste e o tempo maior concordar.";
+   if(StringFind(t,"bos")>=0||StringFind(t,"rompimento")>=0||StringFind(t,"estrutura")>=0)
+      return "📚 BOS (rompimento de estrutura)\nO preço fecha além do último topo (na alta) ou fundo (na baixa), na mesma direção que vinha. A tendência curta continua.\nNo painel: tracejado com \"Rompimento de estrutura pra cima/baixo\".\nComo usar: só vale com o CORPO da vela fechando além, não só o pavio. Não persiga: espere o reteste.";
+   if(StringFind(t,"bloco")>=0||t=="ob"||StringFind(t,"order")>=0)
+      return "📚 Bloco de ordens\nÉ a última vela contrária antes de um movimento forte. Ali ficaram ordens grandes; quando o preço volta, costuma reagir.\nNo painel: caixa com \"Bloco de ordens\". O Alier avisa quando o preço chega nela.\nComo usar: zona de interesse, não de entrada cega. Olhe a reação no M1.";
+   if(StringFind(t,"vwap")>=0||StringFind(t,"medio")>=0)
+      return "📚 VWAP (preço médio da sessão)\nÉ o preço médio que todo mundo pagou hoje, pesado pelo volume.\nNo painel: linha pontilhada \"Preço médio da sessão\".\nComo usar: acima dela o dia tá comprador, abaixo vendedor. Toques nela costumam segurar ou virar ímã.";
+   if(StringFind(t,"kill")>=0||StringFind(t,"sess")>=0||StringFind(t,"horar")>=0)
+      return "📚 Killzones e sessões\nOuro mexe de verdade na abertura de Londres e na abertura de NY (e na sobreposição das duas). A Ásia costuma andar de lado e armar armadilha.\nNo painel: a linha de cima mostra a sessão e se o horário é BOM, normal ou RUIM.\nComo usar: opere só nas janelas boas. Abertura de domingo: spread largo, espere 15-30 min.";
+   if(StringFind(t,"stop")>=0)
+      return "📚 Stop\nÉ onde a sua ideia está errada. Vai atrás da estrutura (do outro lado do fundo/topo ou da varrida), com folga pro spread.\nNo painel: linha vermelha STOP com quanto você perde em US$.\nRegra: stop definido ANTES de entrar e nunca afastar depois. Stop curto demais no ouro o spread come.";
+   if(StringFind(t,"rr")>=0||StringFind(t,"risco")>=0||StringFind(t,"alvo")>=0)
+      return "📚 R:R (risco x retorno)\nSe você arrisca 10 pra ganhar 20, o R:R é 2. O robô só aceita alvo de no mínimo 1,5x o risco.\nNo painel: a linha verde ALVO mostra o R:R.\nPor quê: com R:R 2 você pode errar 6 de 10 e ainda empatar. Acertar muito com alvo pequeno não paga.";
+   if(StringFind(t,"vela")>=0||StringFind(t,"candle")>=0)
+      return "📚 Velas\nEngolfo, martelo, estrela cadente e doji só valem como confirmação em TOPO ou FUNDO de um movimento, nunca no meio do M1.\nComando (do seu curso): primeira vela de um movimento novo, sem pavio do lado da abertura; marque abertura, 50% e fechamento.";
+   if(StringFind(t,"discip")>=0||StringFind(t,"psico")>=0||StringFind(t,"zone")>=0)
+      return "📚 Disciplina (Trading in the Zone)\nUm trade sozinho não precisa estar certo. O que paga é repetir um plano com risco definido, pensando em série de 20, 50 trades.\nStop decidido antes libera a cabeça. Depois de 2 stops, para. Proteger a conta também é lucro.";
+   return "Ainda não tenho aula pronta sobre \""+tema+"\". Temas: fvg, liquidez, varrida, bos, choch, bloco, vwap, killzone, stop, rr, vela, disciplina. Ou me pergunta com suas palavras que eu explico.";
+}
+// legenda (igual ao GUIA_DO_GRAFICO.md do kit)
+string GuiaTxt()
+{
+   return "🗺️ GUIA DO GRÁFICO (uma linha por marca)\n"
+          "• Linha AMARELA com nome = liquidez ACIMA do preço (máxima de ontem, Ásia, Londres, topos iguais).\n"
+          "• Linha BRANCA com nome = liquidez ABAIXO (mínimas, fundos iguais).\n"
+          "• Linha TRACEJADA = esse nível já foi varrido.\n"
+          "• Seta pequena + \"Varrida...\" = o pavio passou do nível e voltou (armadilha de stop).\n"
+          "• Tracejado curto \"Rompimento de estrutura\" (BOS) = fechou além do último topo/fundo a favor.\n"
+          "• Tracejado curto \"Mudança de direção\" (CHoCH) = rompeu contra a direção: possível virada.\n"
+          "• Caixa \"Vazio de preço\" (FVG) = buraco que o preço costuma voltar pra preencher (amarela alta, prata baixa; grossa = H1/M15).\n"
+          "• Caixa \"Bloco de ordens\" = zona onde ficaram ordens grandes; costuma reagir.\n"
+          "• Pontilhada amarela \"Preço médio da sessão\" = VWAP. Pontilhada prata \"Preço de maior volume\" = POC.\n"
+          "• Linha tracejada \"Entrada\", VERMELHA \"STOP\", VERDE \"ALVO\" = plano (só com nota 4+).\n"
+          "• Setas tracejadas \"vem buscar liquidez\" / \"depois sobe/desce até aqui\" = cenário, não certeza.\n"
+          "• Seta verde/vermelha grande = sinal nota 7+ (nos testes, seguir sozinha perdeu).\n"
+          "• Linha AZUL = linha que você pediu. Laranja pontilhada = seu alerta.\n"
+          "• Balão preto e amarelo = última observação da IA.\n"
+          "• Painel: Tempos ▲▼● (D1 até M1), Níveis com distância em pontos, Confluência (lista, não previsão), Hoje na conta.\n"
+          "Muito poluído? Peça \"modo limpo\" ou /limpo.";
+}
+string PodesTxt()
+{
+   return "👽 O que eu faço por você (pode pedir com suas palavras):\n"
+          "🎓 Ensinar: \"me explica o gráfico\" (/explica), /aula fvg, /guia\n"
+          "📒 Seus trades: \"meus trades hoje\" (/trades) com o porquê de cada stop\n"
+          "🔔 Alertas: \"me avisa se passar de 3900\", \"tira o alerta\", /alertas\n"
+          "📏 Linhas: \"desenha uma linha em 3880 suporte\", \"apaga as linhas\"\n"
+          "🧹 Gráfico: \"modo limpo\", \"esconde o bloco da IA\", \"painel mini\"\n"
+          "🔕 Avisos: \"para de avisar VWAP\", \"só me avisa nota 8+\"\n"
+          "📌 Regras: \"não me deixa operar na Ásia\" (eu aviso se você abrir trade contra)\n"
+          "⏰ Lembretes: \"me lembra 10:30 de olhar o payroll\"\n"
+          "📸 Prints: \"manda o H1 do ouro\"; \"analisa o US500 por padrão\"\n"
+          "💼 Ordens (só você, com botão Confirmar): \"compra 0.05 stop 3880 alvo 3900\", \"fecha metade\", \"stop no zero\", \"fecha tudo\"\n"
+          "🤖 Autônomo na DEMO: /autonomo on|off, /aprendizado, /reset_aprendizado\n"
+          "⏸️ Pausar/retomar (eu confirmo antes).";
+}
+// ================= 3. REVISÃO DOS TRADES =================
+string g_tctxArq="ALIEN_trades_contexto.csv";
+string g_tctxHdr="posicao;hora_servidor;hora_brasilia;simbolo;lado;lote;preco;nota_compra;nota_venda;melhor_lado;sessao;killzone;D1;H4;H1;M15;M5;M1;spread;plano_lado;plano_entrada;plano_stop;plano_alvo;trava;origem";
+bool TradeCtxTem(long pos){ int h=FileOpen(g_tctxArq,FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ|FILE_SHARE_WRITE); if(h==INVALID_HANDLE) return false; string k=IntegerToString(pos)+";"; bool a=false; while(!FileIsEnding(h)){ string l=FileReadString(h); if(StringFind(l,k)==0){ a=true; break; } } FileClose(h); return a; }
+string TradeCtxLe(long pos){ int h=FileOpen(g_tctxArq,FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ|FILE_SHARE_WRITE); if(h==INVALID_HANDLE) return ""; string k=IntegerToString(pos)+";", r=""; while(!FileIsEnding(h)){ string l=FileReadString(h); if(StringFind(l,k)==0){ r=l; break; } } FileClose(h); return r; }
+// foto do painel na hora em que um trade abre (qualquer trade da conta)
+void TradeCtxGrava(ulong deal)
+{
+   if(MQLInfoInteger(MQL_TESTER)) return;
+   long en=HistoryDealGetInteger(deal,DEAL_ENTRY); if(en!=DEAL_ENTRY_IN) return;
+   long pos=HistoryDealGetInteger(deal,DEAL_POSITION_ID); if(TradeCtxTem(pos)) return;
+   string sym=HistoryDealGetString(deal,DEAL_SYMBOL); long tp=HistoryDealGetInteger(deal,DEAL_TYPE);
+   datetime ts=(datetime)HistoryDealGetInteger(deal,DEAL_TIME);
+   double vol=HistoryDealGetDouble(deal,DEAL_VOLUME), px=HistoryDealGetDouble(deal,DEAL_PRICE);
+   bool aqui=(sym==_Symbol); string st; SessaoNota(ts,st);
+   Plano b=MelhorPlano(); double spr=SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID);
+   long mg=HistoryDealGetInteger(deal,DEAL_MAGIC);
+   string org=(mg==InpMagic?"robo":(mg==InpMagic+1?"telegram":"manual"));
+   CsvAppend(g_tctxArq,g_tctxHdr,StringFormat("%I64d;%s;%s;%s;%s;%.2f;%s;%d;%d;%s;%s;%s;%d;%d;%d;%d;%d;%d;%s;%s;%s;%s;%s;%s;%s",pos,TimeToString(ts,TIME_DATE|TIME_MINUTES),TimeToString(SrvParaBR(ts),TIME_DATE|TIME_MINUTES),
+      sym,tp==DEAL_TYPE_BUY?"compra":"venda",vol,FmtS(sym,px),aqui?g_pb.score:-1,aqui?g_ps.score:-1,aqui?(b.dir==1?"compra":"venda"):"-",CsvLimpo(st),CsvLimpo(aqui?g_engKZ:""),
+      g_mtf[0],g_mtf[1],g_mtf[2],g_mtf[3],g_mtf[4],g_mtf[5],FmtS(sym,spr),aqui&&PlanoValido(b)?(b.dir==1?"compra":"venda"):"-",aqui&&PlanoValido(b)?Fmt(b.entry):"-",aqui&&PlanoValido(b)?Fmt(b.stop):"-",aqui&&PlanoValido(b)?Fmt(b.target):"-",CsvLimpo(g_pare),org));
+   string rq=RegraQuebrada(vol);
+   if(rq!="" && TgOk() && (!InpTgChat || TgMaster())) SendMsg("⚠️ Opa, você abriu "+(tp==DEAL_TYPE_BUY?"compra":"venda")+" de "+sym+", mas tem uma regra sua: "+rq+". Tá seguindo o plano? Se for o caso, fecha com calma.");
+}
+struct TradeLin { long pos; string sym; int dir; double vol; datetime t0; double p0; double sl; double tp; datetime t1; double p1; double net; string saida; bool aberta; };
+string SaidaTxt(long reason)
+{
+   if(reason==DEAL_REASON_SL) return "bateu o stop";
+   if(reason==DEAL_REASON_TP) return "bateu o alvo";
+   if(reason==DEAL_REASON_SO) return "stop out da corretora";
+   if(reason==DEAL_REASON_EXPERT) return "fechado pelo robô";
+   if(reason==DEAL_REASON_CLIENT || reason==DEAL_REASON_MOBILE || reason==DEAL_REASON_WEB) return "fechado na mão";
+   return "fechado";
+}
+int TradesHoje(TradeLin &t[])
+{
+   ArrayResize(t,0);
+   datetime now=TimeTradeServer(); if(now==0) now=TimeCurrent();
+   if(!HistorySelect(DayStart(now),now+60)) return 0;
+   long ids[]; int n=HistoryDealsTotal();
+   for(int i=0;i<n;i++)
+   {
+      ulong d=HistoryDealGetTicket(i); if(d==0) continue; long ty=HistoryDealGetInteger(d,DEAL_TYPE); if(ty!=DEAL_TYPE_BUY && ty!=DEAL_TYPE_SELL) continue;
+      long p=HistoryDealGetInteger(d,DEAL_POSITION_ID); bool tem=false; for(int k=0;k<ArraySize(ids);k++) if(ids[k]==p){ tem=true; break; }
+      if(!tem){ int k=ArraySize(ids); ArrayResize(ids,k+1); ids[k]=p; }
+   }
+   for(int q=0;q<ArraySize(ids) && q<20;q++)
+   {
+      if(!HistorySelectByPosition(ids[q])) continue;
+      TradeLin L; L.pos=ids[q]; L.sym=""; L.dir=0; L.vol=0; L.t0=0; L.p0=0; L.sl=0; L.tp=0; L.t1=0; L.p1=0; L.net=0; L.saida=""; L.aberta=true;
+      for(int i=0;i<HistoryDealsTotal();i++)
+      {
+         ulong d=HistoryDealGetTicket(i); if(d==0) continue; long en=HistoryDealGetInteger(d,DEAL_ENTRY);
+         L.net+=HistoryDealGetDouble(d,DEAL_PROFIT)+HistoryDealGetDouble(d,DEAL_SWAP)+HistoryDealGetDouble(d,DEAL_COMMISSION);
+         if(en==DEAL_ENTRY_IN && L.t0==0){ L.sym=HistoryDealGetString(d,DEAL_SYMBOL); L.dir=(HistoryDealGetInteger(d,DEAL_TYPE)==DEAL_TYPE_BUY?1:-1); L.vol=HistoryDealGetDouble(d,DEAL_VOLUME); L.t0=(datetime)HistoryDealGetInteger(d,DEAL_TIME); L.p0=HistoryDealGetDouble(d,DEAL_PRICE); L.sl=HistoryDealGetDouble(d,DEAL_SL); L.tp=HistoryDealGetDouble(d,DEAL_TP); }
+         if(en==DEAL_ENTRY_OUT || en==DEAL_ENTRY_OUT_BY){ L.t1=(datetime)HistoryDealGetInteger(d,DEAL_TIME); L.p1=HistoryDealGetDouble(d,DEAL_PRICE); L.saida=SaidaTxt(HistoryDealGetInteger(d,DEAL_REASON)); if(L.sl<=0) L.sl=HistoryDealGetDouble(d,DEAL_SL); if(L.tp<=0) L.tp=HistoryDealGetDouble(d,DEAL_TP); }
+      }
+      if(L.sym=="") continue;
+      L.aberta=PositionSelectByTicket((ulong)L.pos);
+      if(L.aberta){ L.net=PositionGetDouble(POSITION_PROFIT)+PositionGetDouble(POSITION_SWAP); L.sl=PositionGetDouble(POSITION_SL); L.tp=PositionGetDouble(POSITION_TP); }
+      int k=ArraySize(t); ArrayResize(t,k+1); t[k]=L;
+   }
+   return ArraySize(t);
+}
+// leitura simples do porquê (usa a foto do painel na entrada, se tiver)
+string TradeLeitura(const TradeLin &L)
+{
+   string c=TradeCtxLe(L.pos); string s="";
+   string st; int sN=SessaoNota(L.t0,st);
+   if(sN==-1) s+="horário ruim ("+st+"); ";
+   if(c=="") return s+"sem foto do painel na entrada (o robô começou a guardar na 12.6)";
+   string p[]; int n=StringSplit(c,';',p); if(n<24) return s;
+   int h1=(int)StringToInteger(p[14]), m15=(int)StringToInteger(p[15]);
+   if(h1!=0 && h1!=L.dir) s+="contra o H1 ("+TendPalavra(h1)+"); ";
+   if(m15!=0 && m15!=L.dir) s+="contra o M15; ";
+   int nc=(int)StringToInteger(p[7]), nv=(int)StringToInteger(p[8]); int nota=(L.dir==1?nc:nv);
+   if(nota>=0) s+=StringFormat("nota do lado era %d/10; ",nota);
+   if(p[19]!="-" && p[19]!=(L.dir==1?"compra":"venda")) s+="o plano do painel era "+p[19]+"; ";
+   double spr=StringToDouble(p[18]); if(L.sl>0 && spr>0 && spr>0.15*MathAbs(L.p0-L.sl)) s+=StringFormat("spread grande pro stop (%.0f%% da distância); ",100.0*spr/MathAbs(L.p0-L.sl));
+   if(L.sl<=0) s+="entrou SEM stop; ";
+   if(p[23]!="") s+="tinha trava do dia ("+p[23]+"); ";
+   if(p[11]!="" && StringFind(Baixo(p[11]),"fora")<0) s+="dentro de "+p[11]+"; ";
+   return s==""?"dentro do plano":s;
+}
+string TradesTxt(bool compacto)
+{
+   TradeLin t[]; int n=TradesHoje(t);
+   if(n==0) return compacto?"TRADES HOJE: nenhum.":"📒 Hoje ainda não teve trade na conta.";
+   string s=compacto?"TRADES HOJE (da conta, Brasília):\n":"📒 Seus trades de hoje (horário de Brasília):\n";
+   double tot=0;
+   for(int i=0;i<n;i++)
+   {
+      TradeLin L=t[i]; int dg=(int)SymbolInfoInteger(L.sym,SYMBOL_DIGITS); tot+=L.net;
+      string sl=L.sl>0?DoubleToString(L.sl,dg):"sem", tp=L.tp>0?DoubleToString(L.tp,dg):"sem";
+      if(compacto) s+=StringFormat("- %s %s %s %.2f entrada %s SL %s TP %s %s %s $%+.2f | %s\n",HoraBRde(L.t0),L.sym,L.dir==1?"compra":"venda",L.vol,DoubleToString(L.p0,dg),sl,tp,
+            L.aberta?"ABERTA":"saída "+DoubleToString(L.p1,dg)+" às "+HoraBRde(L.t1),L.aberta?"":L.saida,L.net,TradeLeitura(L));
+      else s+=StringFormat("\n%s %s %s %.2f lote às %s\n   entrada %s · stop %s · alvo %s\n   %s · resultado $%+.2f\n   👀 %s\n",L.net>=0?"✅":"🔻",L.dir==1?"🟢 compra":"🔴 venda",L.sym,L.vol,HoraBRde(L.t0),
+            DoubleToString(L.p0,dg),sl,tp,L.aberta?"ainda aberta":"saiu em "+DoubleToString(L.p1,dg)+" às "+HoraBRde(L.t1)+" ("+L.saida+")",L.net,TradeLeitura(L));
+   }
+   s+=StringFormat(compacto?"Total do dia: $%+.2f\n":"\nTotal do dia: $%+.2f",tot);
+   return s;
+}
+void TradesEnvia(bool comIA)
+{
+   string lista=TradesTxt(false);
+   SendLongo(lista);
+   if(!comIA || !AIOn() || StringFind(lista,"ainda não teve")>=0) return;
+   int w=AIEsperaSeg(); if(w>0) return;
+   string r=AIAskEx("Você é o Alier, colega de trading do Vitor (leigo). Português do Brasil, simples, até 6 frases, sem markdown. Explique por que os trades de hoje ganharam ou perderam, usando SÓ os dados (horário, sessão, H1/M15 contra, spread, nota, plano, saída). Dê 1 lição prática. Não invente números.",
+                    CtxIA("",false,false)+TradesTxt(true),450,false,false,0.4);
+   if(r!=""){ r=AISemVeredito(SemCamposCrus(r)); MemAdd("Alier",r); SendMsg("🧠 "+r); }
+}
+string TradesHojeIA(){ string s=TradesTxt(true); return StringLen(s)>1500?StringSubstr(s,0,1500)+"...\n":s; }
+// ================= conhecimento do projeto (arquivo editável) =================
+string g_conhec=""; datetime g_conhecT=0;
+string ConhecimentoTxt()
+{
+   if(g_conhec!="" && TimeLocal()-g_conhecT<600) return g_conhec;
+   g_conhecT=TimeLocal(); string s="";
+   int h=FileOpen("ALIEN_conhecimento.txt",FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ,0,CP_UTF8);
+   if(h!=INVALID_HANDLE){ while(!FileIsEnding(h)){ string l=FileReadString(h); if(StringLen(l)>0 && StringGetCharacter(l,0)=='#') continue; s+=l+"\n"; } FileClose(h); }
+   if(StringLen(s)<200) s=ConhecimentoPadrao();
+   if(StringLen(s)>4500) s=StringSubstr(s,0,4500);
+   g_conhec=s; return s;
+}
+string ConhecimentoPadrao()
+{
+   return "TESTES DE 10 ANOS (ouro XAUUSD, dados 2016-2025, com spread e comissao):\n"+
+      "- A seta do robo sozinha NAO tem vantagem. Nota >= 7 (12.858 trades 2016-2024): acerto 28,9%, media -0,32R por trade, PF 0,59. 2025: -0,22R. 0 de 10 anos positivos.\n"+
+      "- A nota nao separa nada: todo BOS do M5 por faixa de nota deu -0,27R (0-4), -0,26R (5-6), -0,25R (7-8), -0,26R (9-10).\n"+
+      "- Mesmo sem comissao a media fica negativa (-0,17R a -0,20R): stop curto (risco mediano 2,0-2,5 pontos no ouro) + spread come o resto.\n"+
+      "- Nota 9-10 nas setas: +0,02R em 248 trades (t 0,2) = ruido; caiu para -0,10R em 2025.\n"+
+      "- US500 (aproximado): setas -0,17R, 0 de 10 anos positivos.\n"+
+      "- VO3 (vela de corpo forte + volume 2x + rompimento + FVG no M15): lucro 2016-2024 com poucos trades, PERDEU em 2025, e um unico dia carregou 14,5% do lucro. Pista fraca, so observacao.\n"+
+      "- Cesta de indices (ALIEN_INDICES_V1): cerca de 3,8% ao ano com queda maxima de ~7,6% no teste. Ainda nao provado ao vivo.\n"+
+      "- Robo AIBOTFX (recuperacao/hedge): o Vitor perdeu dinheiro. Licao: nada de martingale, grade ou preco medio.\n"+
+      "CONCLUSAO: o robo serve para LER o grafico (liquidez, varrida, FVG, lote, hora de parar) e para disciplina. Nao e maquina de sinal.\n"+
+      "HORARIO (Brasilia): melhores janelas no ouro = abertura de Londres, sobreposicao Londres/NY e abertura de NY. Asia em geral consolida (horario RUIM, pouco volume, armadilha). Almoco de NY mais fraco. Abertura de domingo: gap e spread largo, evitar os primeiros 15-30 min. Dados das 08:30 NY (10:30 Brasilia no inverno dos EUA, 09:30 no verao) mexem forte.\n"+
+      "REGRAS QUE FICAM: alvo minimo 1,5 vez o risco; stop sempre antes de entrar, atras da estrutura; rompimento so vale com CORPO, nao pavio; nao operar consolidacao apertada; no rompimento espere o reteste, nao persiga; leia de cima para baixo (semana, dia, H1/M15, depois M5/M1); M1 sozinho e ruido.\n"+
+      "LOGICA DO PRECO (curso do Vitor, feito para opcao binaria; no ouro precisa de stop e alvo): comando = primeira vela de um movimento novo, sem pavio do lado da abertura; marcar abertura, 50% e fechamento; reacao nos 50% e uma ideia a testar, nao certeza. \"E batata\" e \"100%\" sao hype.\n"+
+      "VELAS: engolfo, martelo/estrela cadente, doji, tres soldados/tres corvos so valem como confluencia em topo ou fundo de swing, nunca no meio do M1.\n"+
+      "TRADING IN THE ZONE (Mark Douglas): um trade isolado nao precisa estar certo; o que importa e repetir um plano com risco definido, pensando em serie. Stop definido antes libera a cabeca. Padrao nao e obrigacao de lucro. Disciplina, nao seta.\n"+
+      "HIPOTESES DO LABORATORIO (nenhuma provada): reacao no 50% do comando em Londres/NY; reteste apos rompimento de corpo; caca da faixa da Asia na abertura de Londres; OTE 62-70% do swing de Londres na abertura de NY; topos/fundos iguais + rompimento de corpo. Criterio: media > 0 depois dos custos, >= 200 operacoes, queda maxima ate 20%, testado em 2026 sem reotimizar.\n"+
+      "PLANO DO PROJETO: 2 a 3 meses so na DEMO juntando dados (diarios CSV). Guardar todo mes parte do que entra na barbearia, fora do trade.\n"+
+      "COMO FALAR: cite esses numeros quando ajudar (ex.: \"nos testes, seguir a seta sozinha deu -0,32R por trade\"), sem inventar outros. Se nao souber, diga que nao sabe.\n"+"";
+}
+// ================= detecção de pedidos em texto livre =================
+bool TemAlgum(string u,const string &k[]){ for(int i=0;i<ArraySize(k);i++) if(StringFind(u,k[i])>=0) return true; return false; }
+bool EhPedidoExplica(string t)
+{
+   string u=Baixo(t);
+   string k[]={"explica o grafico","me explica o grafico","explique o grafico","o que e essa linha","o que sao essas linhas","que linha e essa","nao entendo as linha","nao to entendendo as linha","nao entendo o grafico","o que significa essa","o que e essa caixa","o que sao essas caixas","explica as linhas","explica essas linhas","o que e cada linha"};
+   return TemAlgum(u,k);
+}
+bool EhPedidoTrades(string t)
+{
+   string u=Baixo(t);
+   string k[]={"meus trades","minhas operac","meus stops","trades de hoje","trades hoje","operacoes de hoje","por que eu perdi","porque eu perdi","por que tomei","porque tomei","por que perdi","os stops de hoje","meu historico de hoje"};
+   return TemAlgum(u,k);
+}
+bool EhPedidoPodes(string t)
+{
+   string u=Baixo(t);
+   string k[]={"o que voce pode fazer","o que vc pode fazer","o que voce consegue fazer","o que vc consegue","quais seus comandos","o que voce faz","o que vc faz","suas funcoes","como te dar instruc","como te dar ordem"};
+   return TemAlgum(u,k);
+}
+// ================= comandos novos (chamado pelo TgHandle) =================
+bool AcoesCmd(string cmd,string args)
+{
+   if(cmd=="/explica"){ ExplicaEnvia(); return true; }
+   if(cmd=="/aula"){ SendMsg(AulaTxt(args)); return true; }
+   if(cmd=="/guia"){ SendMsg(GuiaTxt()); return true; }
+   if(cmd=="/podes"||cmd=="/acoes"||cmd=="/ações"){ SendMsg(PodesTxt()); return true; }
+   if(cmd=="/trades"){ TradesEnvia(true); return true; }
+   if(cmd=="/alertas"){ string a=Baixo(args); if(StringFind(a,"limpa")>=0||StringFind(a,"tira")>=0||StringFind(a,"apaga")>=0){ SendMsg(AcaoExecuta("alerta_remove","todos")); } else SendMsg("🔔 Alertas ativos: "+AlertaLista()+"\nPra criar: /alerta 3900 ou \"me avisa se passar de 3900\". Pra tirar: /alertas limpa"); return true; }
+   if(cmd=="/regras"){ SendMsg(RegrasTxt()); return true; }
+   if(cmd=="/lembretes"){ SendMsg(LembretesTxt()); return true; }
+   if(cmd=="/regra"){ SendMsg(args==""?RegrasTxt():AcaoExecuta("regra",args)); return true; }
+   if(cmd=="/linha"){ string p[]; int n=StringSplit(args,' ',p); string t=""; for(int i=1;i<n;i++) t+=(t==""?"":" ")+p[i]; SendMsg(AcaoExecuta("linha",(n>0?p[0]:"")+"|"+t)); return true; }
+   if(cmd=="/limpo"){ SendMsg(AcaoExecuta("limpo",args==""?(g_modoLimpo?"off":"on"):args)); return true; }
+   if(cmd=="/painel"){ string p[]; int n=StringSplit(args,' ',p); SendMsg(AcaoExecuta("painel",(n>0?p[0]:"")+"|"+(n>1?p[1]:"on"))); return true; }
+   if(cmd=="/mudo"){ SendMsg(AcaoExecuta("mudo",args)); return true; }
+   if(cmd=="/som"){ SendMsg(AcaoExecuta("som",args)); return true; }
+   if(cmd=="/nota"){ SendMsg(AcaoExecuta("nota_alerta",args)); return true; }
+   if(cmd=="/simbolo"||cmd=="/símbolo"){ SendMsg(AcaoExecuta("simbolo",args)); return true; }
+   if(cmd=="/lembrete"){ int sp=StringFind(args," "); SendMsg(AcaoExecuta("lembrete",(sp>0?StringSubstr(args,0,sp)+"|"+StringSubstr(args,sp+1):args+"|"))); return true; }
+   if(cmd=="/print"){ string p[]; int n=StringSplit(args,' ',p); string r=AcaoExecuta("print",(n>0?p[0]:"")+"|"+(n>1?p[1]:"")); if(r!="") SendMsg(r); return true; }
+   return false;
+}
+
+//====================================================================
+// v12.6 — ORDENS PELO TELEGRAM (só o Vitor, sempre com Confirmar) + MODO AUTÔNOMO NA DEMO
+//  Ordens manuais: sem trava. Limites do dia e falta de stop viram AVISO; ele decide no Confirmar.
+//  Únicos bloqueios: não é o dono, telegram_ordens (off / demo em conta real), confirmação vencida,
+//  e preço médio (somar na MESMA direção de uma posição que está perdendo = martingale).
+//  Autônomo: só em conta DEMO (checa toda vez), com as regras de risco do próprio robô.
+//====================================================================
+CTrade g_trTg;
+struct OrdemPend { string id; int tipo; string sym; int dir; double lot; double sl; double tp; double frac; double novo; datetime t; string resumo; };
+OrdemPend g_op;
+string g_ordArq="ALIEN_ordens_telegram.csv";
+string g_ordHdr="hora_brasilia;quem;tipo;simbolo;lado;lote;preco;stop;alvo;risco_usd;status;retcode;detalhe";
+#define ORD_SEG 60
+
+bool ContaDemo(){ return AccountInfoInteger(ACCOUNT_TRADE_MODE)==ACCOUNT_TRADE_MODE_DEMO; }
+// ---------------- regras puras (espelhadas em teste/check_mocks.py) ----------------
+string OrdensPermitidas(string modo,bool contaDemo,bool dono)
+{
+   if(!dono) return "Só o Vitor pode mandar ordem.";
+   string m=modo; StringToLower(m);
+   if(m=="off" || m=="0" || m=="nao") return "Ordens pelo Telegram estão desligadas (telegram_ordens=off no ALIEN_config.txt).";
+   if(m=="real") return "";
+   if(!contaDemo) return "Essa conta é REAL e o ALIEN_config.txt está com telegram_ordens=demo. Se quiser mesmo na real, troque pra telegram_ordens=real (decisão sua).";
+   return "";
+}
+// bloqueios duros (poucos): lote, lado do stop/alvo, teto de lote opcional, preço médio
+string OrdemBloqueio(int dir,double preco,double sl,double tp,double lot,double loteMax,bool somaNaPerdedora)
+{
+   if(dir!=1 && dir!=-1) return "Não entendi se é compra ou venda.";
+   if(lot<=0) return "Lote inválido.";
+   if(loteMax>0 && lot>loteMax+1e-9) return StringFormat("Lote %.2f passa do teto que você pôs (ordem_lote_max=%.2f).",lot,loteMax);
+   if(sl>0 && ((dir==1 && sl>=preco) || (dir==-1 && sl<=preco))) return "O stop tá do lado errado do preço (compra: stop abaixo; venda: stop acima).";
+   if(tp>0 && ((dir==1 && tp<=preco) || (dir==-1 && tp>=preco))) return "O alvo tá do lado errado do preço.";
+   if(somaNaPerdedora) return "Você já tem posição nessa direção perdendo. Somar mais seria preço médio (martingale) — isso eu não faço. Feche ou espere.";
+   return "";
+}
+// avisos (não bloqueiam): uma linha cada
+string OrdemAvisos(double sl,double riskUSD,double saldo,double riscoPctAviso,int stopsHoje,int maxStops,double netHoje,double perdaMax,double rr,string regra)
+{
+   string a="";
+   if(sl<=0) a+="⚠️ Sem stop: se o preço disparar contra, a perda não tem limite.\n";
+   if(saldo>0 && riskUSD>0 && riscoPctAviso>0 && riskUSD>riscoPctAviso/100.0*saldo) a+=StringFormat("⚠️ Risco de %.1f%% da conta (acima de %.1f%%).\n",100.0*riskUSD/saldo,riscoPctAviso);
+   if(maxStops>0 && stopsHoje>=maxStops) a+=StringFormat("⚠️ Já foram %d stops hoje (seu limite: %d).\n",stopsHoje,maxStops);
+   else if(stopsHoje>=2) a+=StringFormat("⚠️ Já foram %d stops hoje.\n",stopsHoje);
+   if(perdaMax>0 && netHoje-riskUSD<-perdaMax) a+=StringFormat("⚠️ Se der stop, o dia passa da sua perda máxima ($%.0f).\n",perdaMax);
+   if(rr>0 && rr<1.5) a+=StringFormat("⚠️ Alvo pequeno: %.1fx o risco (o robô usa no mínimo 1,5x).\n",rr);
+   if(regra!="") a+="⚠️ Sua regra: "+regra+"\n";
+   return a;
+}
+bool OrdemConfirmavel(string id,string idPend,datetime tPend,datetime now,bool dono)
+{
+   return dono && idPend!="" && id==idPend && tPend>0 && now-tPend<=ORD_SEG && now>=tPend;
+}
+bool AutonomoPermitido(bool cfgLigado,bool contaDemo){ return cfgLigado && contaDemo; }
+// adaptação: só SOBE a nota mínima ou desliga o balde. Nunca mexe em risco/lote. Nunca desce da base.
+int AdaptaLimiar(int base,int n,double mediaR,int minN,bool &desliga)
+{
+   desliga=false;
+   if(n<minN) return base;
+   if(mediaR<0){ desliga=true; return base; }
+   if(mediaR<0.10) return (int)MathMin(base+1,10);
+   return base;
+}
+// ---------------- texto -> pedido de ordem ----------------
+string NumLimpo(string t)
+{
+   string o=""; int n=StringLen(t);
+   for(int i=0;i<n;i++)
+   {
+      ushort c=StringGetCharacter(t,i);
+      if(c==',' && i>0 && i<n-1){ ushort a=StringGetCharacter(t,i-1), b=StringGetCharacter(t,i+1); if(a>='0'&&a<='9'&&b>='0'&&b<='9'){ o+="."; continue; } o+=" "; continue; }
+      o+=ShortToString(c);
+   }
+   return o;
+}
+bool EhNum(string w){ if(w=="") return false; int pts=0; for(int i=0;i<StringLen(w);i++){ ushort c=StringGetCharacter(w,i); if(c=='.') { pts++; continue; } if(c<'0'||c>'9') return false; } return pts<=1 && w!="."; }
+double NumApos(const string &w[],int n,string k1,string k2="",string k3="")
+{
+   for(int i=0;i<n-1;i++) if(w[i]==k1 || (k2!="" && w[i]==k2) || (k3!="" && w[i]==k3))
+   {
+      for(int j=i+1;j<n && j<=i+3;j++){ if(EhNum(w[j])) return StringToDouble(w[j]); if(w[j]=="zero"||w[j]=="be"||w[j]=="breakeven"||w[j]=="entrada") return -1; }
+   }
+   return 0;
+}
+// reconhece: compra/vende [lote] [stop X] [alvo Y] [símbolo]; fecha tudo/metade/[símbolo]; stop no zero / stop para X; alvo para X
+bool OrdemDeTexto(string text,OrdemPend &o)
+{
+   string u=Baixo(NumLimpo(text)); if(StringFind(u,"?")>=0 || StringFind(u," ou ")>=0 || StringLen(u)>120) return false;
+   string pn[]={"!",";",":","(",")","\""}; for(int i=0;i<ArraySize(pn);i++) StringReplace(u,pn[i]," ");
+   StringTrimLeft(u); StringTrimRight(u);
+   string w[]; int n=StringSplit(u,' ',w); string ww[]; int m=0; for(int i=0;i<n;i++) if(w[i]!=""){ ArrayResize(ww,m+1); ww[m++]=w[i]; }
+   if(m==0) return false;
+   o.id=""; o.tipo=0; o.sym=_Symbol; o.dir=0; o.lot=0; o.sl=0; o.tp=0; o.frac=1; o.novo=0; o.t=0; o.resumo="";
+   string w0=ww[0], w1=m>1?ww[1]:"";
+   if(w0=="abre"||w0=="abrir"||w0=="manda"||w0=="faz"){ w0=w1; }
+   bool compra=(w0=="compra"||w0=="compre"||w0=="comprar"||w0=="buy"), venda=(w0=="vende"||w0=="venda"||w0=="vender"||w0=="sell"||w0=="vend");
+   for(int i=0;i<m;i++){ string s=SimboloDe(ww[i],false); if(s!=""){ o.sym=s; break; } }
+   if(compra||venda)
+   {
+      o.tipo=1; o.dir=compra?1:-1;
+      o.sl=NumApos(ww,m,"stop","sl","stoploss"); if(o.sl<0) o.sl=0;
+      o.tp=NumApos(ww,m,"alvo","tp","take");  if(o.tp<0) o.tp=0;
+      o.lot=NumApos(ww,m,"lote","lotes","lot");
+      if(o.lot<=0){ for(int i=1;i<m;i++){ if(i>0 && (ww[i-1]=="stop"||ww[i-1]=="sl"||ww[i-1]=="alvo"||ww[i-1]=="tp"||ww[i-1]=="em"||ww[i-1]=="no"||ww[i-1]=="para")) continue; if(EhNum(ww[i])){ double v=StringToDouble(ww[i]); if(v>0 && v<=100){ o.lot=v; break; } } } }
+      return true;
+   }
+   bool fecha=(w0=="fecha"||w0=="fechar"||w0=="feche"||w0=="zera"||w0=="zerar"||w0=="encerra");
+   if(fecha)
+   {
+      o.tipo=2; o.frac=(StringFind(u,"metade")>=0||StringFind(u,"meia")>=0||StringFind(u,"50%")>=0)?0.5:1.0;
+      bool achouSym=false; for(int i=1;i<m;i++) if(SimboloDe(ww[i],false)!="") achouSym=true;
+      if(!achouSym && (StringFind(u,"tudo")>=0||StringFind(u,"todas")>=0||StringFind(u,"todos")>=0||w0=="zera"||w0=="zerar")) o.sym="";
+      if(StringFind(u,"compra")>=0) o.dir=1; else if(StringFind(u,"venda")>=0) o.dir=-1;
+      return true;
+   }
+   bool temStop=(StringFind(u,"stop")>=0), temAlvo=(StringFind(u,"alvo")>=0);
+   bool verbo=(w0=="move"||w0=="mover"||w0=="muda"||w0=="mudar"||w0=="coloca"||w0=="poe"||w0=="bota"||w0=="stop"||w0=="alvo"||w0=="sobe"||w0=="desce"||w0=="leva");
+   if(verbo && temStop)
+   {
+      o.tipo=3; double v=NumApos(ww,m,"para","pra","em"); if(v==0) v=NumApos(ww,m,"stop","no","pro");
+      if(StringFind(u,"zero")>=0||StringFind(u,"breakeven")>=0||StringFind(u,"empate")>=0||StringFind(u," be")>=0||StringFind(u,"entrada")>=0) v=-1;
+      if(v==0) return false; o.novo=v; return true;
+   }
+   if(verbo && temAlvo)
+   {
+      o.tipo=4; double v=NumApos(ww,m,"para","pra","em"); if(v==0) v=NumApos(ww,m,"alvo"); if(v<=0) return false; o.novo=v; return true;
+   }
+   return false;
+}
+// ---------------- risco, posições ----------------
+double RiscoUSD(string sym,int dir,double lot,double preco,double sl)
+{
+   if(sl<=0 || lot<=0) return 0; double pr=0;
+   if(OrderCalcProfit(dir==1?ORDER_TYPE_BUY:ORDER_TYPE_SELL,sym,lot,preco,sl,pr)) return MathAbs(pr);
+   double tv=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_VALUE), ts=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_SIZE); if(ts<=0) return 0;
+   return MathAbs(preco-sl)/ts*tv*lot;
+}
+double LoteNorm(string sym,double lot)
+{
+   double st=SymbolInfoDouble(sym,SYMBOL_VOLUME_STEP), mn=SymbolInfoDouble(sym,SYMBOL_VOLUME_MIN), mx=SymbolInfoDouble(sym,SYMBOL_VOLUME_MAX);
+   if(st<=0) st=0.01; lot=MathFloor(lot/st+1e-9)*st; if(lot<mn) lot=0; if(mx>0 && lot>mx) lot=mx;
+   return NormalizeDouble(lot,2);
+}
+bool SomaNaPerdedora(string sym,int dir)
+{
+   for(int i=PositionsTotal()-1;i>=0;i--){ ulong t=PositionGetTicket(i); if(t==0 || PositionGetString(POSITION_SYMBOL)!=sym) continue;
+      int d=PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY?1:-1; if(d==dir && PositionGetDouble(POSITION_PROFIT)<0) return true; }
+   return false;
+}
+string RetcodeTxt(uint rc)
+{
+   switch(rc)
+   {
+      case 10008: case 10009: return "feito";
+      case 10010: return "feito só em parte";
+      case 10004: return "o preço mudou (requote); tenta de novo";
+      case 10006: return "a corretora recusou";
+      case 10007: return "cancelado";
+      case 10013: return "pedido inválido";
+      case 10014: return "lote inválido pra esse ativo";
+      case 10015: return "preço inválido";
+      case 10016: return "stop ou alvo perto demais do preço (ou do lado errado)";
+      case 10017: return "negociação desligada nesse ativo";
+      case 10018: return "mercado fechado";
+      case 10019: return "sem margem suficiente na conta";
+      case 10020: return "o preço mudou; tenta de novo";
+      case 10021: return "sem cotação agora";
+      case 10024: return "pedidos demais seguidos; espera uns segundos";
+      case 10026: return "a corretora desligou robôs nessa conta";
+      case 10027: return "o botão Algo Trading do MT5 tá desligado (liga lá em cima no MT5)";
+      case 10030: return "tipo de preenchimento não aceito pela corretora";
+      case 10031: return "sem conexão com a corretora";
+      case 10040: return "limite de posições da conta";
+      case 10044: return "esse ativo só deixa fechar posição";
+   }
+   return "código "+IntegerToString((int)rc);
+}
+void OrdemLog(string tipo,string sym,int dir,double lot,double preco,double sl,double tp,double risco,string status,uint rc,string det)
+{
+   CsvAppend(g_ordArq,g_ordHdr,StringFormat("%s;%s;%s;%s;%s;%.2f;%s;%s;%s;%.2f;%s;%u;%s",TimeToString(AgoraBR(),TIME_DATE|TIME_SECONDS),CsvLimpo(g_tgQuem),tipo,sym,dir==1?"compra":(dir==-1?"venda":"-"),lot,
+      sym!=""?FmtS(sym,preco):"-",sl>0&&sym!=""?FmtS(sym,sl):"-",tp>0&&sym!=""?FmtS(sym,tp):"-",risco,status,rc,CsvLimpo(det)));
+}
+// ---------------- montar o resumo + botões ----------------
+void OrdemPropoe(OrdemPend &o)
+{
+   string pm=OrdensPermitidas(g_cfgTgOrdens,ContaDemo(),TgDono());
+   if(pm!=""){ OrdemLog("pedido",o.sym,o.dir,o.lot,0,o.sl,o.tp,0,"recusado",0,pm); SendMsg("🚫 "+pm); return; }
+   if(MQLInfoInteger(MQL_TESTER)) return;
+   string sym=o.sym; double saldo=AccountInfoDouble(ACCOUNT_BALANCE);
+   string txt="", aviso="";
+   if(o.tipo==1)
+   {
+      if(!TemCotacao(sym)){ SendMsg("Sem cotação de "+sym+" agora."); return; }
+      double preco=o.dir==1?SymbolInfoDouble(sym,SYMBOL_ASK):SymbolInfoDouble(sym,SYMBOL_BID);
+      string sug="";
+      if(o.sl<=0 && sym==_Symbol){ Plano p=(o.dir==1?g_pb:g_ps); if(PlanoValido(p) && ((o.dir==1 && p.stop<preco)||(o.dir==-1 && p.stop>preco))){ o.sl=p.stop; if(o.tp<=0) o.tp=p.target; sug=" (stop"+(o.tp==p.target?" e alvo":"")+" sugeridos pelo painel — pode trocar)"; } }
+      if(o.lot<=0)
+      {
+         double rUnit=RiscoUSD(sym,o.dir,1.0,preco,o.sl);
+         o.lot= rUnit>0 ? LoteNorm(sym,InpRiskUSD/rUnit) : SymbolInfoDouble(sym,SYMBOL_VOLUME_MIN);
+         if(o.lot<=0) o.lot=SymbolInfoDouble(sym,SYMBOL_VOLUME_MIN);
+         sug+=StringFormat(" (lote calculado pro risco de $%.0f)",InpRiskUSD);
+      }
+      o.lot=LoteNorm(sym,o.lot); if(o.lot<=0){ SendMsg("Esse lote fica abaixo do mínimo do "+sym+"."); return; }
+      string bl=OrdemBloqueio(o.dir,preco,o.sl,o.tp,o.lot,g_cfgOrdLoteMax,SomaNaPerdedora(sym,o.dir));
+      if(bl!=""){ OrdemLog("abrir",sym,o.dir,o.lot,preco,o.sl,o.tp,0,"recusado",0,bl); SendMsg("🚫 "+bl); return; }
+      double risco=RiscoUSD(sym,o.dir,o.lot,preco,o.sl);
+      double rr=(o.sl>0 && o.tp>0)?MathAbs(o.tp-preco)/MathAbs(preco-o.sl):0;
+      aviso=OrdemAvisos(o.sl,risco,saldo,g_cfgOrdRiscoPct,g_stopsHoje,g_cfgMaxStopsDia,g_netHoje,g_cfgPerdaMaxDia,rr,RegraQuebrada(o.lot));
+      txt=StringFormat("📝 Confere a ordem:\n%s %s %.2f lote a mercado (~%s)\n🛑 Stop: %s\n🎯 Alvo: %s\n💵 Risco: %s%s\n⚖️ R:R: %s%s\nConta %s.",
+         o.dir==1?"🟢 COMPRA":"🔴 VENDA",sym,o.lot,FmtS(sym,preco),o.sl>0?FmtS(sym,o.sl):"SEM STOP",o.tp>0?FmtS(sym,o.tp):"sem alvo",
+         o.sl>0?StringFormat("$%.2f",risco):"sem limite",o.sl>0&&saldo>0?StringFormat(" (%.2f%% do saldo)",100.0*risco/saldo):"",rr>0?StringFormat("%.1f",rr):"-",sug,ContaDemo()?"DEMO":"REAL");
+   }
+   else if(o.tipo==2)
+   {
+      int np=0; string ls="";
+      for(int i=0;i<PositionsTotal();i++){ ulong t=PositionGetTicket(i); if(t==0) continue; string s=PositionGetString(POSITION_SYMBOL); int d=PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY?1:-1;
+         if(o.sym!="" && s!=o.sym) continue; if(o.dir!=0 && d!=o.dir) continue; np++; ls+=StringFormat("  %s %s %.2f  P/L $%+.2f\n",d==1?"compra":"venda",s,PositionGetDouble(POSITION_VOLUME),PositionGetDouble(POSITION_PROFIT)); }
+      if(np==0){ SendMsg("Não tem posição aberta"+(o.sym!=""?" no "+o.sym:"")+" pra fechar."); return; }
+      txt=StringFormat("📝 Confere: fechar %s de %d posição(ões):\n%s",o.frac<1?"METADE":"TUDO",np,ls);
+   }
+   else
+   {
+      int np=0; string ls="";
+      for(int i=0;i<PositionsTotal();i++){ ulong t=PositionGetTicket(i); if(t==0 || PositionGetString(POSITION_SYMBOL)!=o.sym) continue; np++;
+         double op=PositionGetDouble(POSITION_PRICE_OPEN); double nv=(o.tipo==3 && o.novo<0)?op:o.novo;
+         ls+=StringFormat("  %s %.2f: %s %s -> %s\n",PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY?"compra":"venda",PositionGetDouble(POSITION_VOLUME),o.tipo==3?"stop":"alvo",
+             FmtS(o.sym,o.tipo==3?PositionGetDouble(POSITION_SL):PositionGetDouble(POSITION_TP)),FmtS(o.sym,nv)); }
+      if(np==0){ SendMsg("Não tem posição aberta no "+o.sym+"."); return; }
+      txt="📝 Confere: mudar "+(o.tipo==3?(o.novo<0?"o stop pro zero (preço de entrada)":"o stop"):"o alvo")+" no "+o.sym+":\n"+ls;
+   }
+   MathSrand((uint)GetTickCount()); o.id=IntegerToString(100000+MathRand()%900000); o.t=TimeLocal(); o.resumo=txt;
+   g_op=o;
+   OrdemLog(o.tipo==1?"abrir":(o.tipo==2?"fechar":(o.tipo==3?"stop":"alvo")),o.sym,o.dir,o.lot,0,o.sl,o.tp,0,"proposto",0,"id "+o.id);
+   SendMsgMarkup(txt+(aviso!=""?"\n\n"+aviso:"\n")+StringFormat("\nVale por %d s.",ORD_SEG),TgKbSimNao("✅ Confirmar","/ordem_ok "+o.id,"❌ Cancelar","/ordem_nao "+o.id));
+}
+// etiqueta da IA -> mesmo caminho (sempre pede Confirmar)
+string OrdemDeAcao(string nome,string params)
+{
+   OrdemPend o; o.id=""; o.tipo=0; o.sym=_Symbol; o.dir=0; o.lot=0; o.sl=0; o.tp=0; o.frac=1; o.novo=0; o.t=0; o.resumo="";
+   if(nome=="ordem"){ string l=Baixo(AcaoP(params,0)); o.tipo=1; o.dir=(StringFind(l,"compr")>=0||l=="buy")?1:((StringFind(l,"vend")>=0||l=="sell")?-1:0); o.lot=NumDe(AcaoP(params,1)); o.sl=NumDe(AcaoP(params,2)); o.tp=NumDe(AcaoP(params,3)); if(o.dir==0) return "Não entendi se é compra ou venda."; }
+   else if(nome=="fechar"){ string a=Baixo(AcaoP(params,0)); o.tipo=2; o.frac=(StringFind(a,"metade")>=0)?0.5:1; if(a=="tudo"||a==""||a=="metade") o.sym=""; else { string s=SimboloDe(a,true); if(s!="") o.sym=s; } }
+   else if(nome=="stop"){ string a=Baixo(AcaoP(params,0)); o.tipo=3; o.novo=(a=="zero"||a=="be"||a=="breakeven"||a=="entrada")?-1:NumDe(a); if(o.novo==0) return "Faltou o preço do stop."; }
+   else if(nome=="alvo"){ o.tipo=4; o.novo=NumDe(AcaoP(params,0)); if(o.novo<=0) return "Faltou o preço do alvo."; }
+   OrdemPropoe(o); return "";
+}
+// ---------------- executar (só pelo botão Confirmar) ----------------
+void OrdemConfirma(string id)
+{
+   if(!OrdemConfirmavel(id,g_op.id,g_op.t,TimeLocal(),TgDono()))
+   {
+      string why=!TgDono()?"Só o Vitor pode confirmar.":(id!=g_op.id||g_op.id==""?"Essa ordem não vale mais (já foi usada ou foi trocada).":"Passou de 60 s, cancelei por segurança. Manda de novo.");
+      OrdemLog("confirmar",g_op.sym,g_op.dir,g_op.lot,0,g_op.sl,g_op.tp,0,"recusado",0,why); SendMsg("⌛ "+why); if(TgDono() && id==g_op.id) g_op.id=""; return;
+   }
+   string pm=OrdensPermitidas(g_cfgTgOrdens,ContaDemo(),TgDono()); if(pm!=""){ g_op.id=""; SendMsg("🚫 "+pm); return; }
+   OrdemPend o=g_op; g_op.id="";
+   SendMsg(OrdemExecuta(o));
+}
+void OrdemCancela(string id){ if(id==g_op.id && TgDono()){ OrdemLog("cancelar",g_op.sym,g_op.dir,g_op.lot,0,g_op.sl,g_op.tp,0,"cancelado",0,""); g_op.id=""; } SendMsg("Beleza, não fiz nada."); }
+string OrdemExecuta(OrdemPend &o)
+{
+   g_trTg.SetExpertMagicNumber(InpMagic+1); g_trTg.SetDeviationInPoints(50);
+   if(o.tipo==1)
+   {
+      g_trTg.SetTypeFillingBySymbol(o.sym);
+      double preco=o.dir==1?SymbolInfoDouble(o.sym,SYMBOL_ASK):SymbolInfoDouble(o.sym,SYMBOL_BID);
+      string bl=OrdemBloqueio(o.dir,preco,o.sl,o.tp,o.lot,g_cfgOrdLoteMax,SomaNaPerdedora(o.sym,o.dir));
+      if(bl!=""){ OrdemLog("abrir",o.sym,o.dir,o.lot,preco,o.sl,o.tp,0,"recusado",0,bl); return "🚫 O preço andou e "+bl; }
+      double risco=RiscoUSD(o.sym,o.dir,o.lot,preco,o.sl);
+      bool ok=o.dir==1?g_trTg.Buy(o.lot,o.sym,0,o.sl,o.tp,"ALIEN telegram"):g_trTg.Sell(o.lot,o.sym,0,o.sl,o.tp,"ALIEN telegram");
+      uint rc=g_trTg.ResultRetcode(); double px=g_trTg.ResultPrice();
+      ok=ok && (rc==10008||rc==10009||rc==10010);
+      OrdemLog("abrir",o.sym,o.dir,o.lot,px>0?px:preco,o.sl,o.tp,risco,ok?"executado":"recusado",rc,g_trTg.ResultRetcodeDescription());
+      if(!ok) return "❌ Não entrou: "+RetcodeTxt(rc)+".";
+      ObsSet(StringFormat("Você mandou %s %.2f pelo Telegram em %s.",o.dir==1?"compra":"venda",o.lot,FmtS(o.sym,px)),"💼");
+      return StringFormat("✅ Entrou: %s %s %.2f lote em %s. Stop %s, alvo %s.",o.dir==1?"🟢 compra":"🔴 venda",o.sym,o.lot,FmtS(o.sym,px>0?px:preco),o.sl>0?FmtS(o.sym,o.sl):"SEM STOP",o.tp>0?FmtS(o.sym,o.tp):"sem alvo");
+   }
+   string res=""; int okN=0, errN=0;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong t=PositionGetTicket(i); if(t==0) continue; string s=PositionGetString(POSITION_SYMBOL); int d=PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY?1:-1;
+      if(o.tipo==2){ if(o.sym!="" && s!=o.sym) continue; if(o.dir!=0 && d!=o.dir) continue; }
+      else if(s!=o.sym) continue;
+      g_trTg.SetTypeFillingBySymbol(s);
+      double vol=PositionGetDouble(POSITION_VOLUME), op=PositionGetDouble(POSITION_PRICE_OPEN), sl=PositionGetDouble(POSITION_SL), tp=PositionGetDouble(POSITION_TP);
+      bool ok=false; string tipo="";
+      if(o.tipo==2)
+      {
+         tipo="fechar";
+         if(o.frac<1){ double v=LoteNorm(s,vol*o.frac); if(v<=0||v>=vol){ ok=g_trTg.PositionClose(t); res+="(metade ficava abaixo do lote mínimo, fechei tudo) "; } else ok=g_trTg.PositionClosePartial(t,v); }
+         else ok=g_trTg.PositionClose(t);
+      }
+      else if(o.tipo==3)
+      {
+         tipo="stop"; double nv=(o.novo<0?op:o.novo); double bid=SymbolInfoDouble(s,SYMBOL_BID), ask=SymbolInfoDouble(s,SYMBOL_ASK);
+         if((d==1 && nv>=bid) || (d==-1 && nv<=ask)){ res+="Stop "+FmtS(s,nv)+" ficaria do outro lado do preço agora; não mexi. "; errN++; continue; }
+         ok=g_trTg.PositionModify(t,nv,tp);
+      }
+      else
+      {
+         tipo="alvo"; double bid=SymbolInfoDouble(s,SYMBOL_BID), ask=SymbolInfoDouble(s,SYMBOL_ASK);
+         if((d==1 && o.novo<=ask) || (d==-1 && o.novo>=bid)){ res+="Alvo "+FmtS(s,o.novo)+" ficaria do lado errado; não mexi. "; errN++; continue; }
+         ok=g_trTg.PositionModify(t,sl,o.novo);
+      }
+      uint rc=g_trTg.ResultRetcode(); ok=ok && (rc==10008||rc==10009||rc==10010);
+      OrdemLog(tipo,s,d,vol,op,sl,tp,0,ok?"executado":"recusado",rc,g_trTg.ResultRetcodeDescription());
+      if(ok) okN++; else { errN++; res+=s+": "+RetcodeTxt(rc)+". "; }
+   }
+   if(okN==0 && errN==0) return "Não achei posição pra mexer.";
+   return (okN>0?StringFormat("✅ Feito em %d posição(ões). ",okN):"")+(errN>0?"❌ "+res:res);
+}
+// ---------------- MODO AUTÔNOMO (DEMO) ----------------
+datetime g_adaptReset=0;
+bool AutonomoAtivo(){ return !g_tradePausa && AutonomoPermitido(g_cfgAutonomo,ContaDemo()); }
+bool PorAutonomo(){ return AutonomoAtivo() && !(InpTradeEnabled && !g_cfgAssistente); }
+int AdaptMinN(){ return (int)MathMax(20,InpAprenderMinN); }
+void AdaptLoad(){ string s=ArqLe("ALIEN_adapt_reset.txt"); g_adaptReset=(datetime)StringToInteger(s); }
+void AdaptStat(int dir,string sess,int &n,double &win,double &avg)
+{
+   LoadHist(); n=0; double w=0,s=0;
+   for(int i=0;i<ArraySize(g_hist);i++)
+   {
+      if(g_hist[i].sym!=_Symbol || g_hist[i].dir!=dir || g_hist[i].sess!=sess) continue;
+      if(g_adaptReset>0 && g_hist[i].t<g_adaptReset) continue;
+      n++; s+=g_hist[i].R; if(g_hist[i].R>0) w++;
+   }
+   win=n>0?100.0*w/n:0; avg=n>0?s/n:0;
+}
+int AutonomoLimiar(int dir,string sess,bool &desliga)
+{
+   int n; double w,a; AdaptStat(dir,sess,n,w,a);
+   return AdaptaLimiar(MathMax(InpScoreTrade,NotaAlertaMin()),n,a,AdaptMinN(),desliga);
+}
+// filtros extras do autônomo (além de Bloqueio, RR >= 1,5, 1 posição, stop obrigatório)
+string AutonomoFiltro(const Plano &b)
+{
+   if(!ContaDemo()) return "conta não é DEMO";
+   if(b.stop<=0) return "sem stop";
+   if(g_mtf[2]!=b.dir) return "H1 não está a favor";
+   string st; int sN=SessaoNota(TimeCurrent(),st);
+   bool kz=(g_engKZ!="" && StringFind(g_engKZ,"fora")<0);
+   if(sN!=1 && !kz) return "fora do horário bom/killzone";
+   bool des=false; int lim=AutonomoLimiar(b.dir,SessNome(TimeCurrent()),des);
+   if(des) return "aprendizado desligou "+(b.dir==1?"compra":"venda")+" em "+SessNome(TimeCurrent())+" (média negativa)";
+   if(b.score<lim) return StringFormat("nota %d abaixo do mínimo aprendido (%d)",b.score,lim);
+   return "";
+}
+string g_sessNomes[4]={"Ásia","Londres","Nova York","fim de NY / madrugada"};
+string AdaptAssinatura()
+{
+   string s="";
+   for(int d=0;d<2;d++) for(int q=0;q<4;q++){ bool des; int lim=AutonomoLimiar(d==0?1:-1,g_sessNomes[q],des); s+=StringFormat("%d%d:%s;",d,q,des?"off":IntegerToString(lim)); }
+   return s;
+}
+string AdaptTabelaTxt()
+{
+   string s=StringFormat("🧠 Aprendizado do autônomo (%s, amostra mínima %d por balde%s):\n",_Symbol,AdaptMinN(),g_adaptReset>0?", contando desde "+TimeToString(g_adaptReset,TIME_DATE):"");
+   int base=MathMax(InpScoreTrade,NotaAlertaMin());
+   for(int d=0;d<2;d++) for(int q=0;q<4;q++)
+   {
+      int dir=d==0?1:-1; int n; double w,a; AdaptStat(dir,g_sessNomes[q],n,w,a); bool des; int lim=AdaptaLimiar(base,n,a,AdaptMinN(),des);
+      s+=StringFormat("• %s %s: %d trades, acerto %.0f%%, média %+.2fR → %s\n",dir==1?"compra":"venda",g_sessNomes[q],n,w,a,n<AdaptMinN()?StringFormat("pouco dado, nota mín. %d",lim):(des?"DESLIGADO":StringFormat("nota mín. %d",lim)));
+   }
+   s+="Regra: só sobe a nota ou desliga; nunca aumenta lote ou risco. /reset_aprendizado zera a contagem (não apaga os dados).";
+   return s;
+}
+string AdaptCompactoIA()
+{
+   int nT=0; double sT=0; LoadHist();
+   for(int i=0;i<ArraySize(g_hist);i++){ if(g_hist[i].sym!=_Symbol) continue; if(g_adaptReset>0 && g_hist[i].t<g_adaptReset) continue; nT++; sT+=g_hist[i].R; }
+   string s=StringFormat("APRENDIZADO AO VIVO (%s): autônomo %s; %d trades do robô registrados, média %+.2fR.",_Symbol,AutonomoAtivo()?"LIGADO na demo":"desligado",nT,nT>0?sT/nT:0);
+   for(int d=0;d<2;d++) for(int q=0;q<4;q++){ int n; double w,a; AdaptStat(d==0?1:-1,g_sessNomes[q],n,w,a); if(n>0) s+=StringFormat(" %s/%s n=%d %+.2fR;",d==0?"compra":"venda",g_sessNomes[q],n,a); }
+   return s+"\n";
+}
+void AdaptChecaMudou()
+{
+   string novo=AdaptAssinatura(), velho=ArqLe("ALIEN_adapt_estado.txt"); StringTrimRight(velho);
+   if(novo==velho) return;
+   ArqGrava("ALIEN_adapt_estado.txt",novo);
+   if(velho!="" && TgOk()) SendMsg("🧠 Aprendi algo e ajustei o autônomo (só ficou mais exigente, risco igual):\n"+AdaptTabelaTxt());
+}
+void DecisaoLog(const Plano &b,string acao)
+{
+   string st; SessaoNota(TimeCurrent(),st); double spr=SymbolInfoDouble(_Symbol,SYMBOL_ASK)-SymbolInfoDouble(_Symbol,SYMBOL_BID);
+   string pts=""; for(int i=0;i<7;i++) pts+=(b.pts[i]?"1":"0");
+   bool des=false; int lim=AutonomoLimiar(b.dir,SessNome(TimeCurrent()),des);
+   CsvAppend("ALIEN_decisoes.csv","hora_servidor;hora_brasilia;simbolo;modo;lado;nota;limiar;balde_desligado;sessao;killzone;D1;H4;H1;M15;M5;M1;criterios;entrada;stop;alvo;rr;spread;lote;risco_usd;acao",
+      StringFormat("%s;%s;%s;%s;%s;%d;%d;%s;%s;%s;%d;%d;%d;%d;%d;%d;'%s;%s;%s;%s;%.2f;%s;%.2f;%.2f;%s",TimeToString(TimeCurrent(),TIME_DATE|TIME_MINUTES),TimeToString(SrvParaBR(TimeCurrent()),TIME_DATE|TIME_MINUTES),_Symbol,
+      PorAutonomo()?"autonomo":(TradeAtivo()?"auto":"assistente"),b.dir==1?"compra":"venda",b.score,lim,des?"sim":"nao",CsvLimpo(st),CsvLimpo(g_engKZ),g_mtf[0],g_mtf[1],g_mtf[2],g_mtf[3],g_mtf[4],g_mtf[5],pts,
+      Fmt(b.entry),Fmt(b.stop),b.target>0?Fmt(b.target):"-",b.rr,Fmt(spr),b.lot,b.riskUSD,CsvLimpo(acao)));
+}
+bool OrdensCmd(string cmd,string args)
+{
+   if(cmd=="/ordem_ok"){ OrdemConfirma(args); return true; }
+   if(cmd=="/ordem_nao"){ OrdemCancela(args); return true; }
+   if(cmd=="/ordem"){ OrdemPend o; if(OrdemDeTexto(args,o) && o.tipo>0) OrdemPropoe(o); else SendMsg("Manda assim: compra 0.05 stop 3880 alvo 3900  |  vende 0.02  |  fecha tudo  |  fecha metade  |  stop no zero  |  muda stop para 3885"); return true; }
+   if(cmd=="/autonomo"||cmd=="/autônomo")
+   {
+      string a=Baixo(args);
+      if(a=="on"||a=="liga"||a=="ligar"||a=="demo")
+      {
+         if(!TgDono()){ SendMsg(NaoDono()); return true; }
+         if(!ContaDemo()){ SendMsg("🚫 Essa conta é REAL. O modo autônomo só roda em conta DEMO."); return true; }
+         CfgSalva("autonomo","demo"); g_cfgAutonomo=true;
+         SendMsg("🤖 Autônomo LIGADO na demo. Eu decido sozinho com as regras do robô: nota mínima, H1 a favor, horário bom, alvo 1,5x, stop sempre, limites do dia, 1 posição, sem martingale. Te aviso cada entrada e saída. /autonomo off desliga.");
+         return true;
+      }
+      if(a=="off"||a=="desliga"||a=="desligar")
+      {
+         if(!TgDono()){ SendMsg(NaoDono()); return true; }
+         CfgSalva("autonomo","off"); g_cfgAutonomo=false;
+         SendMsg("Autônomo DESLIGADO. Posição aberta (se tiver) continua com stop e alvo; eu não abro mais nada sozinho.");
+         return true;
+      }
+      SendMsg("🤖 Autônomo: "+(AutonomoAtivo()?"LIGADO (demo)":(g_cfgAutonomo&&!ContaDemo()?"bloqueado: conta REAL":(g_cfgAutonomo&&g_tradePausa?"pausado (/retoma)":"desligado")))+".\n/autonomo on | /autonomo off\n\n"+AdaptTabelaTxt());
+      return true;
+   }
+   if(cmd=="/reset_aprendizado")
+   {
+      if(!TgDono()){ SendMsg(NaoDono()); return true; }
+      if(Baixo(args)=="desfaz"){ ArqGrava("ALIEN_adapt_reset.txt",""); g_adaptReset=0; SendMsg("Voltei a contar o histórico todo.\n"+AdaptTabelaTxt()); return true; }
+      g_adaptReset=TimeCurrent(); ArqGrava("ALIEN_adapt_reset.txt",IntegerToString((long)g_adaptReset)); ArqGrava("ALIEN_adapt_estado.txt",AdaptAssinatura());
+      SendMsg("🧠 Zerei a contagem do aprendizado a partir de agora (os dados antigos continuam salvos). Pra desfazer: /reset_aprendizado desfaz");
+      return true;
+   }
+   return false;
+}
 
 string SvcStatus()
 {
@@ -5293,19 +6454,23 @@ void TentaOperar()
    if(TemPosOuOrdem()){ Diario(b,"pulado: já tem posição"); return; }
    LoadHist();
    if(InpAprenderDesativar && FaixaDesativada(Faixa(b.score),b.dir,SessNome(TimeCurrent()))){ Diario(b,"pulado: faixa desativada pelo histórico"); Print("ALIEN AUTO: faixa desativada pelo seu histórico - pulei"); return; }
+   if(PorAutonomo()){ string af=AutonomoFiltro(b); if(af!=""){ Diario(b,"pulado (autônomo): "+af); Print("ALIEN autônomo: pulei - ",af); return; } }
    if(b.loteMinAcima || b.lot<=0){ Print("ALIEN AUTO: lote mínimo passa do risco - pulei"); return; }
    if(!PlanoValido(b) || b.rr+1e-12<RRMinAlvo()){ Diario(b,"pulado: "+PlanoSemSetup(b.dir)); Print("ALIEN AUTO: ",PlanoSemSetup(b.dir)," - não opero com RR abaixo do mínimo"); return; }
    double ask=SymbolInfoDouble(_Symbol,SYMBOL_ASK), bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    double sl=NormP(b.stop);
    double risk=MathAbs(b.entry-b.stop);
    if(risk<=0) return;
-   if(InpSpreadMaxPctStop>0 && (ask-bid)>InpSpreadMaxPctStop/100.0*risk){ Print("ALIEN AUTO: spread alto - pulei"); return; }
+   if(InpSpreadMaxPctStop>0 && (ask-bid)>InpSpreadMaxPctStop/100.0*risk){ Diario(b,"pulado: spread alto"); Print("ALIEN AUTO: spread alto - pulei"); return; }
    double tp=NormP(b.target);
    double minDist=(double)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)*_Point;
    double lot=NormalizeDouble(b.lot,2);
    string cm=StringFormat("APROF %d/10",b.score);
    // IA: comenta o sinal; só pode VETAR se InpAIVeto = true (nunca abre trade)
    string ia=AIAsk(AgoraCurtoIA()+StateJSON(b)); if(ia!=""){ AIPanelSet(ia); ObsSet(ia,"🤖"); VereditoLog("sinal"); }
+   // v12.6: no autônomo a IA (se respondeu) pode só aprovar ou vetar; nunca muda nível
+   bool vetoAuto=(PorAutonomo() && ia!="" && g_aiVeredito!="" && g_aiVeredito!=(b.dir==1?"COMPRA":"VENDA"));
+   if(vetoAuto){ Diario(b,"pulado (autônomo): IA vetou ("+g_aiVeredito+")"); Notifica(StringFormat("🤖 Autônomo: achei %s nota %d/10 no %s, mas a IA disse %s. Não entrei.",b.dir==1?"compra":"venda",b.score,_Symbol,g_aiVeredito)); return; }
    if(AIVetou(ia,b.dir)){ Diario(b,"pulado: IA vetou"); Notifica(StringFormat("A IA vetou o sinal do %s nota %d/10. Não entrei. %s",_Symbol,b.score,ia)); return; }
    bool ok=false; bool limite=(StringFind(b.entNome,"FVG")>=0 || StringFind(b.entNome,"vazio")>=0);
    if(limite)
@@ -5324,7 +6489,7 @@ void TentaOperar()
    if(ok && TgOk() && InpTgFoto && !MQLInfoInteger(MQL_TESTER)){ string f="APROF_auto.png"; ChartRedraw(0); if(ChartScreenShot(0,f,1600,900,ALIGN_RIGHT)) SendPhoto(f,StringFormat("ALIEN AUTO %s %s nota %d/10",_Symbol,b.dir==1?"COMPRA":"VENDA",b.score)); }
    if(ok){ Diario(b,limite?"ordem limitada":"a mercado"); g_sigRiskUSD=b.riskUSD; g_sigScore=b.score; g_sigDir=b.dir; g_sigTime=TimeCurrent(); MqlDateTime md; TimeToStruct(TimeCurrent(),md); g_sigHour=md.hour; g_sigSess=SessNome(TimeCurrent()); }
    else Diario(b,"recusada pela corretora");
-   if(ok) Notifica(StringFormat("Bora: mandei %s de %s no %s, nota %d/10. Lote %.2f, entrada %s, stop %s, alvo %s (risco ~$%.2f). %s",
+   if(ok) Notifica((PorAutonomo()?"🤖 Autônomo (demo) decidiu sozinho. ":"")+StringFormat("Bora: mandei %s de %s no %s, nota %d/10. Lote %.2f, entrada %s, stop %s, alvo %s (risco ~$%.2f). %s",
                    limite?"limitada":"a mercado",b.dir==1?"🟢 COMPRA":"🔴 VENDA",_Symbol,b.score,lot,Fmt(b.entry),Fmt(sl),Fmt(tp),b.riskUSD,Narrativa(b,false,""))+(ia!=""?"\n\nO que a IA achou:\n"+ia:""));
    else Print("ALIEN AUTO: ordem recusada ",g_tr.ResultRetcode()," ",g_tr.ResultRetcodeDescription());
 }
@@ -5336,7 +6501,9 @@ int OnInit()
    g_tr.SetDeviationInPoints(30);
    g_tr.SetTypeFillingBySymbol(_Symbol);
    CfgLoad();
+   PrefLoad(); AdaptLoad();
    Core_Init();
+   UsuarioDesenha();
    g_peak=MathMax(AccountInfoDouble(ACCOUNT_BALANCE),AccountInfoDouble(ACCOUNT_EQUITY));
    if(ContaBloqueada()){ g_extra="BLOQUEADO: CONTA REAL - este robô só opera em DEMO (mude InpAllowRealAccount por sua conta e risco)"; g_extraC=clrRed; }
    MathSrand((uint)(GetTickCount()^(uint)(ChartID()%1000000)));
@@ -5359,7 +6526,7 @@ void OnTimer()
    Core_Update(true);
    static ulong lastPoll=0, lastMin=0; ulong ms=GetTickCount64();
    if(ms-lastPoll>=(ulong)MathMax(InpTgPollSeg,2)*1000){ lastPoll=ms; TgPoll(); }
-   if(ms-lastMin>=30000){ lastMin=ms; ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); g_statusSvc=SvcStatus(); }
+   if(ms-lastMin>=30000){ lastMin=ms; ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); LembretesTimer(); UsuarioDesenha(); g_statusSvc=SvcStatus(); }
 }
 void OnTick()
 {
@@ -5387,6 +6554,7 @@ void OnTradeTransaction(const MqlTradeTransaction &tr,const MqlTradeRequest &rq,
    if(tr.type!=TRADE_TRANSACTION_DEAL_ADD) return;
    if(!HistoryDealSelect(tr.deal)) return;
    DisciplinaFechou(tr.deal);                       // qualquer trade da conta (seu ou do robô)
+   if(HistoryDealSelect(tr.deal)) TradeCtxGrava(tr.deal);   // v12.6: foto do painel na entrada
    if(!HistoryDealSelect(tr.deal)) return;
    if(HistoryDealGetInteger(tr.deal,DEAL_MAGIC)!=InpMagic) return;
    long en=HistoryDealGetInteger(tr.deal,DEAL_ENTRY);
@@ -5399,12 +6567,13 @@ void OnTradeTransaction(const MqlTradeTransaction &tr,const MqlTradeRequest &rq,
             StringFormat("%s;%s;%s;%d;%s;%s;%d;%.2f;%.2f;%.3f;%s",TimeToString(g_sigTime,TIME_DATE|TIME_MINUTES),_Symbol,g_sigDir==1?"compra":"venda",g_sigScore,Faixa(g_sigScore),
             g_sigSess,g_sigHour,g_sigRiskUSD,net,R,EnumToString((ENUM_DEAL_REASON)HistoryDealGetInteger(tr.deal,DEAL_REASON))));
       g_histLoad=0;
-      Notifica(StringFormat("Saiu do %s com %+.2f (%.2fR).",_Symbol,net,R));
+      Notifica(StringFormat("%sSaiu do %s com %+.2f (%.2fR): %s.",PorAutonomo()?"🤖 Autônomo: ":"",_Symbol,net,R,SaidaTxt(HistoryDealGetInteger(tr.deal,DEAL_REASON))));
+      if(g_sigScore>0) AdaptChecaMudou();
    }
 }
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam)
 {
    EngChartEvent(id,sparam);
-   if(id==CHARTEVENT_CHART_CHANGE) ObsDesenha();
+   if(id==CHARTEVENT_CHART_CHANGE){ ObsDesenha(); static uint ult=0; uint ms=GetTickCount(); if(ms-ult>300){ ult=ms; RotulosArruma(); ChartRedraw(0); } }
 }
