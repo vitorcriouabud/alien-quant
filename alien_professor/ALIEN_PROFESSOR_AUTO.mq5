@@ -6,10 +6,10 @@
 //| Stop e alvo vão junto com a ordem. Conta real bloqueada padrão.  |
 //+------------------------------------------------------------------+
 #property copyright "ALIEN - Vitor Lima"
-#property version   "12.60"
+#property version   "12.70"
 #property description "Robô dos sinais do ALIEN PROFESSOR. Risco fixo, 1 posição, travas diárias, DD 15%, bloqueio de conta real. ATENÇÃO: o teste histórico dos sinais foi NEGATIVO."
 #define APROF_EA
-#define APROF_VER "12.6"
+#define APROF_VER "12.7"
 #include <Trade\Trade.mqh>
 
 input group "=== ROBÔ (AUTO) ==="
@@ -53,6 +53,110 @@ input bool   InpBalaoIA           = true;        // Mostrar no gráfico a últim
 input bool   InpBackupSemanal     = true;        // Copiar os ALIEN_*.csv toda semana para MQL5/Files/ALIEN_backup/data
 #define InpRiscoUSD InpRiskUSD
 
+
+//====================================================================
+// v12.7: CONEXÃO SEM CONFIGURAR NADA
+// O MT5 guarda a lista "Permitir WebRequest para URL" CRIPTOGRAFADA no config\common.ini.
+// Escrever o endereço em texto lá não funciona (testado: erro 4014) e as versões antigas do
+// INSTALAR.bat ainda estragavam a lista que você tinha colocado à mão -> "a IA e o Telegram caíam".
+// Agora o robô fala com o Telegram e com o Gemini pelo próprio Windows (wininet.dll), que não
+// depende dessa lista. O INSTALAR.bat liga "Permitir importação de DLL" (isso o MT5 aceita em texto).
+// Se a DLL falhar, tenta o WebRequest normal. Sem internet: tenta de novo sozinho, cada vez
+// esperando um pouco mais (2 s ... 60 s), e avisa UMA vez no painel.
+//====================================================================
+#import "wininet.dll"
+long InternetOpenW(string agent,int access,string proxy,string bypass,int flags);
+long InternetConnectW(long h,string host,int port,string user,string pass,int svc,int flags,long ctx);
+long HttpOpenRequestW(long h,string verb,string obj,string ver,string ref,long acc,int flags,long ctx);
+int  HttpSendRequestW(long h,string hdr,int hlen,uchar &opt[],int olen);
+int  HttpQueryInfoW(long h,int lvl,int &buf,int &len,int &idx);
+int  InternetReadFile(long h,uchar &buf[],int n,int &rd);
+int  InternetSetOptionW(long h,int opt,int &val,int len);
+int  InternetCloseHandle(long h);
+#import
+string   g_netAviso="";            // linha única pro painel ("" = tudo conectado)
+string   g_netHost[]; int g_netFalhas[]; ulong g_netProx[];
+bool     g_netAvisou=false;
+int NetIdx(string host)
+{
+   for(int i=0;i<ArraySize(g_netHost);i++) if(g_netHost[i]==host) return i;
+   int k=ArraySize(g_netHost); ArrayResize(g_netHost,k+1); ArrayResize(g_netFalhas,k+1); ArrayResize(g_netProx,k+1);
+   g_netHost[k]=host; g_netFalhas[k]=0; g_netProx[k]=0; return k;
+}
+string NetNome(string host){ return StringFind(host,"telegram")>=0?"Telegram":"IA"; }
+void NetOk(string host)
+{
+   int i=NetIdx(host);
+   if(g_netFalhas[i]>=2) Print("ALIEN: ",NetNome(host)," conectado de novo.");
+   g_netFalhas[i]=0; g_netProx[i]=0;
+   bool todos=true; for(int j=0;j<ArraySize(g_netFalhas);j++) if(g_netFalhas[j]>=2) todos=false;
+   if(todos){ g_netAviso=""; g_netAvisou=false; }
+}
+void NetFalha(string host)
+{
+   int i=NetIdx(host); g_netFalhas[i]++;
+   int esp=(int)MathMin(60,MathPow(2,MathMin(g_netFalhas[i],6)));      // 2,4,8,16,32,60 s
+   g_netProx[i]=GetTickCount64()+(ulong)esp*1000;
+   if(g_netFalhas[i]>=2)
+   {
+      g_netAviso="Sem conexão com o "+NetNome(host)+" agora. Tô tentando de novo sozinho.";
+      if(!g_netAvisou){ Print("ALIEN: ",g_netAviso," (confira a internet do PC)"); g_netAvisou=true; }
+   }
+}
+// separa https://host/caminho
+bool NetUrl(string url,string &host,string &path,int &port)
+{
+   port=443; string u=url;
+   if(StringFind(u,"https://")==0) u=StringSubstr(u,8);
+   else if(StringFind(u,"http://")==0){ u=StringSubstr(u,7); port=80; }
+   int s=StringFind(u,"/");
+   host=(s<0?u:StringSubstr(u,0,s)); path=(s<0?"/":StringSubstr(u,s));
+   int c=StringFind(host,":"); if(c>0){ port=(int)StringToInteger(StringSubstr(host,c+1)); host=StringSubstr(host,0,c); }
+   return host!="";
+}
+// mesma cara do WebRequest(method,url,headers,timeout,data,result,headers_resp). -1 = sem conexão.
+int NetWinInet(string method,string url,string headers,int timeout,const char &data[],char &result[],string &rh)
+{
+   string host,path; int port;
+   if(!NetUrl(url,host,path,port)) return -1;
+   long hi=InternetOpenW("ALIEN",0,"","",0);            // 0 = usa o proxy do Windows
+   if(hi==0) return -1;
+   int to=MathMax(timeout,3000);
+   InternetSetOptionW(hi,2,to,4); InternetSetOptionW(hi,5,to,4); InternetSetOptionW(hi,6,to,4);
+   long hc=InternetConnectW(hi,host,port,"","",3,0,0);
+   if(hc==0){ InternetCloseHandle(hi); return -1; }
+   int fl=(int)(0x80000000|0x04000000|0x00000200|0x00080000);   // recarrega, sem cache, sem janela, sem cookie
+   if(port==443) fl|=0x00800000;                                   // https
+   long hr=HttpOpenRequestW(hc,method,path,"HTTP/1.1","",0,fl,0);
+   if(hr==0){ InternetCloseHandle(hc); InternetCloseHandle(hi); return -1; }
+   int n=ArraySize(data); uchar b[]; ArrayResize(b,MathMax(n,1)); for(int i=0;i<n;i++) b[i]=(uchar)data[i];
+   int ok=HttpSendRequestW(hr,headers,StringLen(headers),b,n);
+   int st=-1;
+   if(ok!=0)
+   {
+      int len=4,idx=0; st=0; HttpQueryInfoW(hr,19|0x20000000,st,len,idx);
+      uchar buf[8192]; int rd=0, tot=0; ArrayResize(result,0);
+      while(InternetReadFile(hr,buf,8192,rd)!=0 && rd>0)
+      { ArrayResize(result,tot+rd); for(int i=0;i<rd;i++) result[tot+i]=(char)buf[i]; tot+=rd; }
+   }
+   InternetCloseHandle(hr); InternetCloseHandle(hc); InternetCloseHandle(hi);
+   rh="";
+   return st;
+}
+void NetFalhaAviso(){ }   // o aviso já sai uma vez só pelo NetFalha()
+int HttpReq(string method,string url,string headers,int timeout,const char &data[],char &result[],string &rh)
+{
+   string host,path; int port; NetUrl(url,host,path,port);
+   int i=NetIdx(host);
+   ArrayResize(result,0); rh="";
+   if(g_netProx[i]>0 && GetTickCount64()<g_netProx[i]) return -1;     // esperando pra tentar de novo (não trava o robô)
+   int code=-1;
+   if(MQLInfoInteger(MQL_DLLS_ALLOWED)) code=NetWinInet(method,url,headers,timeout,data,result,rh);
+   if(code<=0){ ResetLastError(); code=WebRequest(method,url,headers,timeout,data,result,rh); }
+   if(code<=0){ NetFalha(host); return -1; }
+   NetOk(host);
+   return code;
+}
 //+------------------------------------------------------------------+
 //| ALIEN PROFESSOR - nucleo (apenas leitura e desenho, NUNCA opera) |
 //+------------------------------------------------------------------+
@@ -106,6 +210,7 @@ input double InpFVGMinATR         = 0.10;        // Tamanho mínimo do FVG (x AT
 input int    InpScoreVerde        = 7;           // Nota mínima p/ VERDE
 input int    InpScoreAmarelo      = 4;           // Nota mínima p/ AMARELO
 input int    InpScoreAlerta       = 7;           // Alerta quando a nota chegar em
+input int    InpNotaForte         = 9;           // v12.7: nota mínima pra dizer COMPRAR/VENDER (menos chamadas, mais claras)
 input bool   InpAlerta            = true;        // Alerta na tela
 input bool   InpPush              = false;       // Notificação no celular (push)
 
@@ -433,9 +538,9 @@ void CalcMTF()
    for(int i=0;i<6;i++){ datetime t=iTime(_Symbol,g_mtfTF[i],0); if(t!=0 && t!=g_mtfBar[i]){ g_mtf[i]=TrendTF(g_mtfTF[i]); g_mtfBar[i]=t; } }
    MqlRates r[]; ArraySetAsSeries(r,true);
    datetime t1=iTime(_Symbol,PERIOD_H1,0);
-   if(InpFVG_H1 && t1!=0 && t1!=g_fvgH1Bar && CopyRates(_Symbol,PERIOD_H1,0,300,r)>50){ ScanFVG(r,PERIOD_H1,200,g_fvgH1); g_fvgH1Bar=t1; DrawFVGHTF(g_fvgH1,"FH1","Vazio de preço",C'0,55,95',C'95,0,75'); }
+   if(InpFVG_H1 && t1!=0 && t1!=g_fvgH1Bar && CopyRates(_Symbol,PERIOD_H1,0,300,r)>50){ ScanFVG(r,PERIOD_H1,200,g_fvgH1); g_fvgH1Bar=t1; DrawFVGHTF(g_fvgH1,"FH1","Vazio de preço (gráfico de 1 hora)",C'0,55,95',C'95,0,75'); }
    datetime t2=iTime(_Symbol,PERIOD_M15,0);
-   if(InpFVG_M15 && t2!=0 && t2!=g_fvgM15Bar && CopyRates(_Symbol,PERIOD_M15,0,300,r)>50){ ScanFVG(r,PERIOD_M15,200,g_fvgM15); g_fvgM15Bar=t2; DrawFVGHTF(g_fvgM15,"FM15","Vazio de preço",C'0,80,90',C'110,50,0'); }
+   if(InpFVG_M15 && t2!=0 && t2!=g_fvgM15Bar && CopyRates(_Symbol,PERIOD_M15,0,300,r)>50){ ScanFVG(r,PERIOD_M15,200,g_fvgM15); g_fvgM15Bar=t2; DrawFVGHTF(g_fvgM15,"FM15","Vazio de preço (gráfico de 15 minutos)",C'0,80,90',C'110,50,0'); }
 }
 void DrawFVGHTF(const FVGz &f[],string pf,string lbl,color cUp,color cDn)
 {
@@ -459,8 +564,8 @@ void DrawFVGHTF(const FVGz &f[],string pf,string lbl,color cUp,color cDn)
 // preco dentro de algum FVG H1/M15 a favor?
 string InHTFFVG(int dir,double px)
 {
-   for(int m=0;m<ArraySize(g_fvgH1);m++) if(!g_fvgH1[m].filled && g_fvgH1[m].dir==dir && px<=g_fvgH1[m].top && px>=g_fvgH1[m].bot) return "vazio de preço no H1";
-   for(int m=0;m<ArraySize(g_fvgM15);m++) if(!g_fvgM15[m].filled && g_fvgM15[m].dir==dir && px<=g_fvgM15[m].top && px>=g_fvgM15[m].bot) return "vazio de preço no M15";
+   for(int m=0;m<ArraySize(g_fvgH1);m++) if(!g_fvgH1[m].filled && g_fvgH1[m].dir==dir && px<=g_fvgH1[m].top && px>=g_fvgH1[m].bot) return "vazio de preço do gráfico de 1 hora";
+   for(int m=0;m<ArraySize(g_fvgM15);m++) if(!g_fvgM15[m].filled && g_fvgM15[m].dir==dir && px<=g_fvgM15[m].top && px>=g_fvgM15[m].bot) return "vazio de preço do gráfico de 15 minutos";
    return "";
 }
 //--------------------------------------------------------------------
@@ -759,7 +864,7 @@ void CalcPlano(int dir,Plano &p,int sessN)
    // plano
    double atr=g_atr, buf=InpBufferATR*atr+spread;
    if(fi>=0){ p.entry=(g_fvg[fi].top+g_fvg[fi].bot)/2; p.entNome="meio do vazio de preço"; }
-   else     { p.entry= dir==1?ask:bid; p.entNome="preço atual (sem FVG)"; }
+   else     { p.entry= dir==1?ask:bid; p.entNome="preço atual (sem vazio de preço)"; }
    // stop: além da varrida (se houver) senão além do swing mais próximo do lado de proteção
    double base=0; int n=ArraySize(g_r);
    if(sweepExt>0 && ((dir==1 && sweepExt<p.entry) || (dir==-1 && sweepExt>p.entry))) base=sweepExt;
@@ -815,8 +920,8 @@ void DrawPlano(const Plano &p)
    datetime t1=g_r[0].time, t2=t1+PeriodSeconds(InpTFExec)*20;
    string d=p.dir==1?"COMPRA":"VENDA";
    ObjLine("PLe",t1,p.entry,t2,clrGold,STYLE_DASH,2,"Entrada "+d+" "+Fmt(p.entry)+" ("+p.entNome+")",clrGold);
-   ObjLine("PLs",t1,p.stop,t2,clrRed,STYLE_SOLID,2,StringFormat("STOP %s  (-$%.2f)",Fmt(p.stop),p.riskUSD),clrRed);
-   if(p.target>0) ObjLine("PLt",t1,p.target,t2,clrLime,STYLE_SOLID,2,StringFormat("ALVO %s  (+$%.2f)  R:R %.1f",Fmt(p.target),p.targetUSD,p.rr),clrLime);
+   ObjLine("PLs",t1,p.stop,t2,clrRed,STYLE_SOLID,2,StringFormat("Stop (onde sai se der errado) %s  (-$%.2f)",Fmt(p.stop),p.riskUSD),clrRed);
+   if(p.target>0) ObjLine("PLt",t1,p.target,t2,clrLime,STYLE_SOLID,2,StringFormat("Alvo (onde realiza o lucro) %s  (+$%.2f)  ganha %.1fx o risco",Fmt(p.target),p.targetUSD,p.rr),clrLime);
 }
 
 //--------------------------------------------------------------------
@@ -850,34 +955,84 @@ string Narrativa(const Plano &b,bool block,string nw)
    if(block) return (g_pare!=""? g_pare : nw)+". Hoje o trabalho é NÃO operar. Proteger a conta também é lucro.";
    string d=b.dir==1?"compra":"venda";
    string t="";
-   t+= g_mtf[2]==1?"H1 de alta":(g_mtf[2]==-1?"H1 de baixa":"H1 sem direção");
-   t+= g_mtf[3]==g_mtf[2] && g_mtf[2]!=0 ? " (M15 junto)" : " (M15 diferente)";
+   t+= g_mtf[2]==1?"gráfico de 1 hora subindo":(g_mtf[2]==-1?"gráfico de 1 hora caindo":"gráfico de 1 hora sem direção");
+   t+= g_mtf[3]==g_mtf[2] && g_mtf[2]!=0 ? " (o de 15 minutos junto)" : " (o de 15 minutos diferente)";
    // varrida
    string sw="";
    for(int v=0;v<ArraySize(g_niv);v++) if(g_niv[v].lado==-b.dir && g_niv[v].estado==ST_VARRIDA && (g_r[0].time-g_niv[v].tSweep)<=InpVarridaValida*PeriodSeconds(InpTFExec)) sw=g_niv[v].nome;
    t+= sw!="" ? ", varreu "+sw : ", ainda sem varrida do lado "+(b.dir==1?"de baixo":"de cima");
    int nb=ArraySize(g_bos);
-   if(nb>0 && g_bos[nb-1].dir==b.dir && b.pts[2]) t+=", "+(g_bos[nb-1].choch?"CHoCH":"BOS")+" no "+StringSubstr(EnumToString(InpTFExec),7)+" a favor";
-   else t+=", sem BOS a favor";
+   if(nb>0 && g_bos[nb-1].dir==b.dir && b.pts[2]) t+=", "+(g_bos[nb-1].choch?"mudou de direção":"rompeu a estrutura")+" a favor";
+   else t+=", ainda sem rompimento a favor";
    double px=SymbolInfoDouble(_Symbol,SYMBOL_BID); if(px<=0) px=g_r[0].close;
    string inH=InHTFFVG(b.dir,px);
    if(inH!="") t+=", preço DENTRO do "+inH+" de "+d;
    else if(StringFind(b.entNome,"vazio")>=0 || StringFind(b.entNome,"FVG")>=0) t+=", vazio de preço de "+d+" em "+Fmt(b.entry);
    t+=". ";
-   if(b.score>=InpScoreVerde)
+   if(b.score>=NotaForte())
    {
-      if((StringFind(b.entNome,"vazio")>=0||StringFind(b.entNome,"FVG")>=0) && MathAbs(px-b.entry)>0.3*g_atr) t+="=> Esperar o preço VOLTAR ao vazio de preço ("+Fmt(b.entry)+") e confirmar no M1; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
-      else t+="=> Setup de "+d+" montado. Só entre se o M1 confirmar; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
+      if((StringFind(b.entNome,"vazio")>=0||StringFind(b.entNome,"FVG")>=0) && MathAbs(px-b.entry)>0.3*g_atr) t+="=> Esperar o preço VOLTAR ao vazio de preço ("+Fmt(b.entry)+") e confirmar no gráfico de 1 minuto; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
+      else t+="=> Setup de "+d+" montado. Só entre se o gráfico de 1 minuto confirmar; stop "+Fmt(b.stop)+", alvo "+b.alvoNome+".";
    }
    else if(b.score>=InpScoreAmarelo)
    {
       string falta="";
-      string nm[7]={"tendência","varrida","BOS","FVG","volume","horário","alvo 2R"};
+      string nm[7]={"tendência","varrida","rompimento","vazio de preço","volume","horário","alvo 2x o risco"};
       for(int i=0;i<7;i++) if(!b.pts[i]) falta+=(falta==""?"":", ")+nm[i];
       t+="=> Atenção, mas ainda falta: "+falta+". Esperar.";
    }
    else t+="=> Nada pra fazer agora. Sem setup é sem operação.";
    return t;
+}
+
+//--------------------------------------------------------------------
+// v12.7: "E AGORA?" em português simples: COMPRAR / VENDER / ESPERAR / FICAR FORA
+// Mais rígido que a seta antiga: só chama compra/venda com nota >= InpNotaForte (9),
+// horário bom, gráfico de 1 hora a favor, alvo >= 2x o risco e preço perto da entrada.
+// Isso NÃO garante ganho: no teste de 10 anos a nota 7-8 perdeu e a 9-10 ficou perto de zero.
+int NotaForte(){ return MathMax(MathMax(InpNotaForte,InpScoreVerde),1); }
+string FaltaTxt(const Plano &b)
+{
+   string nm[7]={"gráfico de 1 hora a favor","varrida de liquidez","rompimento a favor","vazio de preço","volume forte","horário bom","alvo de 2x o risco"};
+   string f=""; int k=0;
+   for(int i=0;i<7;i++) if(!b.pts[i]){ if(k<3) f+=(f==""?"":", ")+nm[i]; k++; }
+   if(k>3) f+=" e mais "+IntegerToString(k-3);
+   return f;
+}
+// acao: COMPRAR | VENDER | ESPERAR | FICAR FORA ; porque: 1 linha ; oque: o que fazer, com preços
+string DecideAgora(string &porque,string &oque)
+{
+   datetime now=TimeTradeServer(); if(now==0) now=TimeCurrent();
+   string nw=NoticiaAviso(now);
+   Plano b=MelhorPlano();
+   double px=SymbolInfoDouble(_Symbol,SYMBOL_BID); if(px<=0 && ArraySize(g_r)>0) px=g_r[0].close;
+   string lado=(b.dir==1?"COMPRA":"VENDA");
+   if(g_pare!=""){ porque=g_pare+"."; oque="Hoje o trabalho é não operar. Proteger a conta também é lucro."; return "FICAR FORA"; }
+   if(nw!=""){ porque="Notícia forte chegando ("+nw+"). O preço pula pra todo lado."; oque="Não entra agora. Espera uns 15 minutos depois da notícia."; return "FICAR FORA"; }
+   if(!PlanoValido(b)){ porque="Não tem jogada montada no gráfico agora."; oque="Fica só olhando. Sem jogada é sem operação."; return "ESPERAR"; }
+   if(!b.pts[5]){ porque="Horário fraco (fora de Londres e Nova York): o ouro anda sem direção."; oque="Não entra. Espera Londres ou Nova York abrir."; return "FICAR FORA"; }
+   if(b.score<NotaForte()){ porque=StringFormat("Nota %d/10 pra %s: ainda fraco. Falta: %s.",b.score,lado,FaltaTxt(b)); oque=StringFormat("Não entra. Só chamo entrada com nota %d ou mais.",NotaForte()); return "ESPERAR"; }
+   if(!b.pts[0]){ porque="O gráfico de 1 hora tá contra essa "+lado+"."; oque="Não entra contra a maré. Espera."; return "ESPERAR"; }
+   if(b.rr<2.0){ porque=StringFormat("O alvo tá perto demais (só %.1fx o risco).",b.rr); oque="Não vale o risco. Espera."; return "ESPERAR"; }
+   string precos=StringFormat("Entrada %s | Stop %s | Alvo %s (alvo = %.1fx o risco). Lote %.2f arrisca ~$%.0f.",Fmt(b.entry),Fmt(b.stop),Fmt(b.target),b.rr,b.lot,b.riskUSD);
+   double atr=g_atr>0?g_atr:_Point*50;
+   if(MathAbs(px-b.entry)>0.3*atr)
+   {
+      porque=StringFormat("%s boa montada (nota %d/10), mas o preço tá longe da entrada.",lado,b.score);
+      oque="Espera o preço voltar em "+Fmt(b.entry)+". Se voltar: "+precos;
+      return "ESPERAR";
+   }
+   porque=StringFormat("Nota %d/10, gráfico de 1 hora a favor, horário bom, alvo grande.",b.score);
+   oque=precos+" Sem stop não entra.";
+   return b.dir==1?"COMPRAR":"VENDER";
+}
+// texto pronto pro Telegram (/agora, "e agora?")
+string AgoraTexto()
+{
+   string pq,oq; string a=DecideAgora(pq,oq);
+   string ic=(a=="COMPRAR"?"🟢":(a=="VENDER"?"🔴":(a=="ESPERAR"?"🟡":"⛔")));
+   double px=SymbolInfoDouble(_Symbol,SYMBOL_BID);
+   return ic+" AGORA: "+a+"\n"+_Symbol+" em "+Fmt(px)+"\nPor quê: "+pq+"\nO que fazer: "+oq+"\n(Leitura do gráfico, não é certeza. Teste de 10 anos: seguir sinal sozinho não deu lucro.)";
 }
 void Painel()
 {
@@ -979,7 +1134,7 @@ void Core_Update(bool forcePanel=false)
    if(!g_noDraw){ DrawPlano(b); if(newBar||refresh){ DrawLinhasChave(); DrawCenarios(); RotulosArruma(); } Painel(); }
    // alerta (uma vez por barra)
    static int prevOk=0; // 0 = abaixo; +1/-1 = já avisou nessa direção
-   bool okNow=(PlanoValido(b) && b.score>=InpScoreAlerta && g_pare=="" && NoticiaAviso(now)=="");
+   bool okNow=(PlanoValido(b) && b.score>=MathMax(InpScoreAlerta,NotaForte()) && g_pare=="" && NoticiaAviso(now)=="");
    if(newBar && !okNow) prevOk=0;
    if(newBar && okNow && prevOk!=b.dir && g_lastAlert!=bt)
    {
@@ -1802,7 +1957,8 @@ void PainelDesenhaMini()
    g_cv.Rectangle(0,0,W-1,H-1,ColorToARGB(clrGold,255));
    g_cv.Rectangle(1,1,W-2,H-2,ColorToARGB(clrGold,255));
    PainelFonte(InpFonte,true);
-   g_cv.TextOut(10,8,"ALIEN  "+_Symbol,ColorToARGB(clrGold,255));
+   string mpq,moq; string ma=DecideAgora(mpq,moq);
+   g_cv.TextOut(10,8,"ALIEN  "+_Symbol+"   AGORA: "+ma,ColorToARGB(clrGold,255));
    if(ver!="")
    {
       color cv=CorVeredito(ver);
@@ -1847,7 +2003,15 @@ void PainelDesenhaDash()
    int hBar=22+thS;
    int hDisc=thS+thB+8;
    if(!g_pnIA) hAi=-6; if(!g_pnNiv) hNiv=0; if(!g_pnConf) hBar=0; if(!g_pnConta) hDisc=0;
-   int H=8+thB+6+hAi+hHead+hMtf+hNiv+hBar+hDisc+10;
+   // v12.7: caixa "AGORA" no topo: o que fazer, por quê, stop e alvo (português simples)
+   string agPq="", agOq=""; string agA=DecideAgora(agPq,agOq);
+   string agL1[], agL2[];
+   PainelQuebra("Por quê: "+agPq,W-28,f,false,agL1);
+   PainelQuebra(agOq,W-28,f,true,agL2);
+   int nA1=MathMin(3,ArraySize(agL1)), nA2=MathMin(3,ArraySize(agL2));
+   int thG=PainelTexH(f+8,true);
+   int hAg=8+thG+6+nA1*(th+1)+4+nA2*(thB+1)+8;
+   int H=8+thB+6+hAg+6+hAi+hHead+hMtf+hNiv+hBar+hDisc+10;
    if(g_cv.Width()!=W || g_cv.Height()!=H) g_cv.Resize(W,H);
    g_cv.Erase(ColorToARGB(clrBlack,230));
    g_cv.Rectangle(0,0,W-1,H-1,ColorToARGB(clrGold,255));
@@ -1856,6 +2020,21 @@ void PainelDesenhaDash()
    PainelFonte(f+1,true);
    g_cv.TextOut(pad,y,"ALIEN PROFESSOR",ColorToARGB(clrGold,255));
    y+=thB+6;
+   {
+      // amarelo/preto/branco: COMPRAR = caixa amarela, VENDER = caixa branca, ESPERAR/FICAR FORA = preta
+      bool cheia=(agA=="COMPRAR"||agA=="VENDER");
+      color bg=(agA=="COMPRAR"?clrGold:(agA=="VENDER"?clrWhite:C'10,10,10'));
+      color fg=(cheia?clrBlack:(agA=="ESPERAR"?clrGold:clrWhite));
+      g_cv.FillRectangle(6,y,W-7,y+hAg-1,ColorToARGB(bg,245));
+      g_cv.Rectangle(6,y,W-7,y+hAg-1,ColorToARGB(clrGold,255)); g_cv.Rectangle(7,y+1,W-8,y+hAg-2,ColorToARGB(clrGold,255));
+      int ay=y+6;
+      PainelFonte(f+8,true); g_cv.TextOut(pad,ay,"AGORA: "+agA,ColorToARGB(fg,255)); ay+=thG+6;
+      color c2=(cheia?clrBlack:clrWhite);
+      PainelFonte(f,false); for(int k=0;k<nA1;k++){ g_cv.TextOut(pad,ay,agL1[k],ColorToARGB(c2,255)); ay+=th+1; }
+      ay+=4;
+      PainelFonte(f,true); for(int k=0;k<nA2;k++){ g_cv.TextOut(pad,ay,agL2[k],ColorToARGB(cheia?clrBlack:clrGold,255)); ay+=thB+1; }
+      y+=hAg+6;
+   }
 
    if(g_pnIA){
    // caixa da IA
@@ -2252,7 +2431,9 @@ string UrlEnc(string s)
    return r;
 }
 // WebRequest não existe no testador -> Telegram desligado lá
-bool TgTokenOk(){ return InpUseTelegram && StringLen(g_cfgTgToken)>20 && !MQLInfoInteger(MQL_TESTER); }
+// v12.7: Telegram FORÇADO ligado (o parâmetro InpUseTelegram/InpTgChat antigo não desliga mais)
+bool TgChatOn(){ return true; }
+bool TgTokenOk(){ return StringLen(g_cfgTgToken)>20 && !MQLInfoInteger(MQL_TESTER); }
 bool TgOk(){ return TgTokenOk() && StringLen(g_cfgTgChat)>0; }
 // destino da resposta: o chat de onde veio a mensagem (grupo ou privado); fora disso, o privado do dono
 string TgDestino(){ return g_tgReply!=""?g_tgReply:g_cfgTgChat; }
@@ -2272,8 +2453,8 @@ bool SendMsgTo(string chat,string text)
    string body="chat_id="+UrlEnc(chat)+"&text="+UrlEnc(text);
    char data[],res[]; string rh; StringToCharArray(body,data,0,StringLen(body));  // body já é ASCII (url-encoded)
    ResetLastError();
-   int code=WebRequest("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",8000,data,res,rh);
-   if(code==-1){ Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),"). Adicione https://api.telegram.org em Ferramentas > Opções > Expert Advisors."); return false; }
+   int code=HttpReq("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",8000,data,res,rh);
+   if(code==-1){ NetFalhaAviso(); return false; }
    if(code!=200) Print("Telegram respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
@@ -2293,8 +2474,8 @@ bool SendPhoto(string file,string caption)
    AddStr(buf,"\r\n--"+bd+"--\r\n");
    char res[]; string rh;
    ResetLastError();
-   int code=WebRequest("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendPhoto","Content-Type: multipart/form-data; boundary="+bd+"\r\n",15000,buf,res,rh);
-   if(code==-1){ Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),")"); return false; }
+   int code=HttpReq("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendPhoto","Content-Type: multipart/form-data; boundary="+bd+"\r\n",15000,buf,res,rh);
+   if(code==-1){ NetFalhaAviso(); return false; }
    if(code!=200) Print("Telegram foto respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
@@ -2324,7 +2505,8 @@ void AICfgInit(){ g_cfgAIKey=InpAIKey; g_cfgAI2Key=InpAI2Key; g_cfgGem2=InpGemin
 string   g_aiTxt="";
 datetime g_aiLast=0;
 
-bool AIOn(){ return InpUseAI && (StringLen(g_cfgAIKey)>10 || StringLen(g_cfgAI2Key)>10 || StringLen(g_cfgGem2)>10) && !MQLInfoInteger(MQL_TESTER); }
+bool AIOn(){ return (   // v12.7: IA forçada ligada quando tem chave
+   StringLen(g_cfgAIKey)>10 || StringLen(g_cfgAI2Key)>10 || StringLen(g_cfgGem2)>10) && !MQLInfoInteger(MQL_TESTER); }
 string JEsc(string s)
 {
    // escape JSON-string: \ " \n \r \t e controles <0x20 como \u00XX
@@ -2697,15 +2879,15 @@ string AIAskOne(string sys,string estado,string endpoint,string model,string key
    for(int i=0;i<n;i++) data[i]=(char)utf8[i];
    string hdr="Content-Type: application/json\r\nAuthorization: Bearer "+key+"\r\n";
    ResetLastError();
-   int code=WebRequest("POST",endpoint,hdr,15000,data,res,rh);
+   int code=HttpReq("POST",endpoint,hdr,15000,data,res,rh);
    // limite do plano grátis (429) ou servidor ocupado (5xx): espera e tenta de novo (2 s, depois 5 s)
    for(int tent=0; tent<2 && (code==429 || code==500 || code==503); tent++)
    {
       Print("IA [",model,"] ocupada (",code,") - tentando de novo");
       Sleep(tent==0?2000:5000); ArrayResize(res,0); ResetLastError();
-      code=WebRequest("POST",endpoint,hdr,15000,data,res,rh);
+      code=HttpReq("POST",endpoint,hdr,15000,data,res,rh);
    }
-   if(code==-1){ g_aiLastErr="WebRequest bloqueado (erro "+IntegerToString(GetLastError())+")"; Print("IA [",model,"] ",g_aiLastErr,". Adicione o endereço do endpoint em Ferramentas > Opções > Expert Advisors."); return ""; }
+   if(code==-1){ g_aiLastErr="sem conexão"; NetFalhaAviso(); return ""; }
    string r=CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8);
    if(code!=200){ g_aiLastErr=IntegerToString(code)+": "+StringSubstr(r,0,300); Print("IA [",model,"] respondeu ",g_aiLastErr); return ""; }
    string t=JContent(r); StringReplace(t,"**",""); StringTrimLeft(t); StringTrimRight(t);
@@ -2718,13 +2900,12 @@ bool AIVetou(string t,int dir){ if(!InpAIVeto || t=="") return false; return g_a
 string AIFalhaTxt()
 {
    if(StringFind(g_aiLastErr,"429")==0) return "A IA grátis do Google tá no limite agora 😅 Espera 1 minutinho e me manda de novo.";
-   if(StringFind(g_aiLastErr,"WebRequest")>=0) return "Não consegui falar com a IA: o MT5 bloqueou o acesso (WebRequest). Rode o INSTALAR.bat de novo com o MT5 fechado.";
+   if(StringFind(g_aiLastErr,"sem conex")>=0) return "Tô sem conexão com a IA agora. Já tô tentando de novo sozinho, manda de novo em 1 minutinho.";
    if(StringFind(g_aiLastErr,"5")==0) return "Os servidores da IA tão ocupados agora. Tenta de novo em 1 minuto 🙏";
    return "A IA não respondeu agora. Tenta de novo em 1 minuto.";
 }
 string AIStatus()
 {
-   if(!InpUseAI) return "IA: desligada";
    if(StringLen(g_cfgAIKey)<=10 && StringLen(g_cfgAI2Key)<=10 && StringLen(g_cfgGem2)<=10) return "IA: coloque a chave Gemini em MQL5\\Files\\ALIEN_config.txt (gemini_chave_1=...) ou em InpAI2Key";
    if(MQLInfoInteger(MQL_TESTER)) return "IA: não roda no testador";
    return "";
@@ -3486,11 +3667,11 @@ void ChatIA(string pergunta,string titulo,string sym="",ENUM_TIMEFRAMES tf=PERIO
       if(!plano)
       {
          if(soNoticia){ SendMsg(NoticiasTxt()); return; }
-         SendMsg("A IA tá desligada agora (falta chave ou WebRequest). Se quiser a leitura do gráfico, manda /analise ou /plano. Notícias: /noticias.");
+         SendMsg("A IA não respondeu agora (tô tentando de novo sozinho). Se quiser a leitura do gráfico, manda /analise ou /plano. Notícias: /noticias.");
          return;
       }
       Plano b=MelhorPlano();
-      SendMsg("A IA tá desligada agora (falta chave ou WebRequest). Segue a leitura do gráfico:\n"+EdgeSePreciso(Narrativa(b,g_pare!=""||NoticiaAviso(TimeTradeServer())!="",NoticiaAviso(TimeTradeServer()))));
+      SendMsg("A IA não respondeu agora (tô tentando de novo sozinho). Segue a leitura do gráfico:\n"+EdgeSePreciso(Narrativa(b,g_pare!=""||NoticiaAviso(TimeTradeServer())!="",NoticiaAviso(TimeTradeServer()))));
       if(FotoDepoisDaResposta(pergunta,forcarPlano,sym)){ if(fotoAlvo) FotoTF(sym,tf,sym+" "+TfNome(tf)); else TgFoto(FotoLegenda()); }
       return;
    }
@@ -3589,6 +3770,7 @@ string AjudaTxt()
           "/foto - print com uma explicação curtinha\n"
           "/memoria - o que eu lembro de você  |  /esquece - apago\n"
           "/grupo - (no grupo, só o Vitor) libera o grupo pra falar comigo\n"
+          "⚡ /agora ou \"e agora?\" - o que fazer AGORA, por quê, stop e alvo\n"
           "🆕 /explica - o que é cada linha do gráfico | /aula fvg | /guia - legenda\n"
           "🆕 /trades - seus trades de hoje e o porquê | /podes - tudo que eu sei fazer\n"
           "🆕 Me dá ordens com suas palavras: \"me avisa em 3900\", \"modo limpo\", \"não me deixa operar na Ásia\", \"me lembra 10:30\"\n"
@@ -3663,6 +3845,7 @@ void TgHandle(string chat,string text)
    if(iscmd){ SendMsg("Não peguei esse comando.\n\n"+AjudaTxt()); return; }
    // v12.6: pedidos em texto livre que o robô resolve sem IA
    if(EhPedidoExplica(text)){ MemAdd(g_tgQuem,text); ExplicaEnvia(); return; }
+   if(EhPedidoAgora(text)){ MemAdd(g_tgQuem,text); SendMsg(AgoraTexto()); return; }   // v12.7: resposta simples e direta
    if(EhPedidoTrades(text)){ MemAdd(g_tgQuem,text); TradesEnvia(true); return; }
    if(EhPedidoPodes(text)){ MemAdd(g_tgQuem,text); SendMsg(PodesTxt()); return; }
    { OrdemPend op; if(OrdemDeTexto(text,op) && op.tipo>0){ MemAdd(g_tgQuem,text); if(!TgDono()){ SendMsg("Ordem só o Vitor pode mandar 🙏"); return; } OrdemPropoe(op); return; } }
@@ -3682,7 +3865,7 @@ string BotUser()
    {
       g_botUserTent=TimeLocal();
       char data[],res[]; string rh;
-      int code=WebRequest("GET","https://api.telegram.org/bot"+g_cfgTgToken+"/getMe","",5000,data,res,rh);
+      int code=HttpReq("GET","https://api.telegram.org/bot"+g_cfgTgToken+"/getMe","",5000,data,res,rh);
       if(code==200){ string u=JStrKey(CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8),"username"); if(u!="") g_botUser=u; }
    }
    if(g_botUser=="") return "Alierprofessorbot";
@@ -3729,13 +3912,13 @@ void TgMasterRenova(){ if(g_tgMaster && GlobalVariableCheck("APROF_TGM_ID") && G
 void TgOffSincroniza(){ string s=ArqLe(g_tgEstArq); if(s=="") return; string l[]; if(StringSplit(s,'\n',l)>0){ long o=StringToInteger(l[0]); if(o>g_tgOff) g_tgOff=o; } }
 void TgPoll()
 {
-   if(!TgTokenOk() || !InpTgChat) return;
+   if(!TgTokenOk() || !TgChatOn()) return;
    g_tgMaster=TgMaster(); if(!g_tgMaster) return;
    TgOffSincroniza();
    string url="https://api.telegram.org/bot"+g_cfgTgToken+"/getUpdates?timeout=0&limit=20&offset="+IntegerToString(g_tgOff);
    char data[],res[]; string rh; ResetLastError();
-   int code=WebRequest("GET",url,"",5000,data,res,rh);
-   if(code==-1){ if(g_tgErrPrint++%60==0) Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),"). Adicione https://api.telegram.org em Ferramentas > Opções > Expert Advisors."); return; }
+   int code=HttpReq("GET",url,"",5000,data,res,rh);
+   if(code==-1){ NetFalhaAviso(); return; }
    string r=CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8);
    if(code!=200){ if(g_tgErrPrint++%60==0) Print("Telegram getUpdates respondeu ",code,code==409?" (o bot tem webhook ou outro programa lendo - só um pode ler)":(code==401?" (token inválido - crie um novo no @BotFather)":""),": ",StringSubstr(r,0,200)); return; }
    int pos=0; bool mudou=false;
@@ -3831,7 +4014,7 @@ void TgPoll()
 void TgPreAlerta()
 {
    if(!TgOk() || InpPreAlertaMin<=0 || !CalOn()) return;
-   if(InpTgChat && !g_tgMaster) return;
+   if(TgChatOn() && !g_tgMaster) return;
    LoadNews(); datetime now=TimeTradeServer();
    for(int i=0;i<ArraySize(g_news);i++)
    {
@@ -3914,8 +4097,8 @@ bool SendJsonMsg(string chat,string text,string markup)
    ArrayResize(data,n);
    for(int i=0;i<n;i++) data[i]=(char)utf8[i];
    ResetLastError();
-   int code=WebRequest("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendMessage","Content-Type: application/json\r\n",8000,data,res,rh);
-   if(code==-1){ Print("Telegram: WebRequest bloqueado (erro ",GetLastError(),")"); return false; }
+   int code=HttpReq("POST","https://api.telegram.org/bot"+g_cfgTgToken+"/sendMessage","Content-Type: application/json\r\n",8000,data,res,rh);
+   if(code==-1){ NetFalhaAviso(); return false; }
    if(code!=200) Print("Telegram respondeu ",code,": ",CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8));
    return code==200;
 }
@@ -3928,7 +4111,7 @@ void TgAckCb(string qid)
    string url="https://api.telegram.org/bot"+g_cfgTgToken+"/answerCallbackQuery";
    string body="callback_query_id="+UrlEnc(qid);
    char data[],res[]; string rh; StringToCharArray(body,data,0,StringLen(body));
-   WebRequest("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",5000,data,res,rh);
+   HttpReq("POST",url,"Content-Type: application/x-www-form-urlencoded\r\n",5000,data,res,rh);
 }
 
 string PlanoLadoTxt(const Plano &p,string lado)
@@ -4302,7 +4485,7 @@ string AprendizadoTxt(int dias=0)
 void WeeklySummary()
 {
    if(MQLInfoInteger(MQL_TESTER) || !TgOk()) return;
-   if(InpTgChat && !g_tgMaster) return;
+   if(TgChatOn() && !g_tgMaster) return;
    datetime br=AgoraBR(); MqlDateTime d; TimeToStruct(br,d);
    if(d.day_of_week!=0 || d.hour<20) return;               // domingo 20:00 (Brasília)
    string key="SEM"+TimeToString(br,TIME_DATE);
@@ -4447,7 +4630,7 @@ void ParadaInit()
    string s=ArqLe(ParadaArq());
    ParadaGrava(1,-1);
    if(!TgOk()) return;
-   if(InpTgChat && !TgMaster()) return;      // só o gráfico que atende o chat avisa
+   if(TgChatOn() && !TgMaster()) return;      // só o gráfico que atende o chat avisa
    string versao="Alier versão "+APROF_VER+", ligado às "+g_ligadoBR+" (Brasília) no "+_Symbol+".";
    if(s=="")
    {
@@ -4469,7 +4652,7 @@ void ParadaInit()
 // ---------------- 5. teclado fixo + confirmação de pausa ----------------
 string TgKbFixo()
 {
-   return "{\"keyboard\":[[{\"text\":\"📰 Notícias\"},{\"text\":\"📊 Análise\"},{\"text\":\"🧭 Plano\"}],"
+   return "{\"keyboard\":[[{\"text\":\"⚡ E agora?\"}],[{\"text\":\"📰 Notícias\"},{\"text\":\"📊 Análise\"},{\"text\":\"🧭 Plano\"}],"
           "[{\"text\":\"🗓️ Agenda\"},{\"text\":\"📸 Foto\"},{\"text\":\"ℹ️ Status\"}],[{\"text\":\"🎓 Explica\"},{\"text\":\"📒 Trades\"},{\"text\":\"🔔 Alertas\"}],[{\"text\":\"⏸️ Pausa\"},{\"text\":\"▶️ Retoma\"}]],"
           "\"resize_keyboard\":true,\"is_persistent\":true}";
 }
@@ -4484,6 +4667,7 @@ string BotaoCmd(string t)
    string u=AISemAcento(t); StringToUpper(u);
    string o="";
    for(int i=0;i<StringLen(u);i++){ ushort c=StringGetCharacter(u,i); if(c>='A' && c<='Z') o+=ShortToString(c); }
+   if(o=="EAGORA"||o=="AGORA") return "/agora";
    if(o=="NOTICIAS") return "/noticias";
    if(o=="ANALISE")  return "/analise";
    if(o=="PLANO")    return "/plano";
@@ -4557,7 +4741,7 @@ void MemoriaApaga(){ if(!g_tgEmGrupo) ArqGrava(g_fatosArq,""); ArqGrava(MemArq()
 bool BaixaUrl(string url,uchar &out[],int timeout=15000)
 {
    char data[],res[]; string rh; ResetLastError();
-   int code=WebRequest("GET",url,"",timeout,data,res,rh);
+   int code=HttpReq("GET",url,"",timeout,data,res,rh);
    if(code!=200) { Print("Áudio: download respondeu ",code," (erro ",GetLastError(),")"); return false; }
    int n=ArraySize(res); ArrayResize(out,n); for(int i=0;i<n;i++) out[i]=(uchar)res[i];
    return n>0;
@@ -4589,12 +4773,12 @@ string GeminiMidia(uchar &bin[],string mime,string pedido,int maxTok,double temp
       string url="https://generativelanguage.googleapis.com/v1beta/models/"+InpAI2Model+":generateContent";
       if(k==1){ if(StringLen(g_cfgGem2)>10 && key!=g_cfgGem2) hdr="Content-Type: application/json\r\nx-goog-api-key: "+g_cfgGem2+"\r\n"; else Sleep(3000); }
       ArrayResize(res,0); ResetLastError();
-      code=WebRequest("POST",url,hdr,40000,data,res,rh);
+      code=HttpReq("POST",url,hdr,40000,data,res,rh);
       r=CharArrayToString(res,0,WHOLE_ARRAY,CP_UTF8);
       if(code!=429 && code!=500 && code!=503) break;
       Print("Gemini mídia ocupada (",code,") - tentando de novo");
    }
-   if(code==-1){ erro="WebRequest bloqueado ("+IntegerToString(GetLastError())+")"; return ""; }
+   if(code==-1){ erro="sem conexão"; return ""; }
    if(code==429){ erro="limite grátis do Google"; return ""; }
    if(code!=200){ erro="Gemini respondeu "+IntegerToString(code); Print("Gemini mídia: ",erro,": ",StringSubstr(r,0,300)); return ""; }
    string t=GeminiTexto(r); StringReplace(t,"**","");
@@ -4741,7 +4925,7 @@ void ProEnvia(string tipo,string key,int dir,double preco,string msg)
 void ProativoBar()
 {
    if(!InpAlertasProativos) return;
-   if(!MQLInfoInteger(MQL_TESTER) && TgOk() && InpTgChat && !g_tgMaster) return;   // só um gráfico avisa
+   if(!MQLInfoInteger(MQL_TESTER) && TgOk() && TgChatOn() && !g_tgMaster) return;   // só um gráfico avisa
    datetime m1=iTime(_Symbol,PERIOD_M1,0); if(m1==0 || m1==g_proBarM1) return;
    g_proBarM1=m1;
    if(!g_ready) return;
@@ -4867,7 +5051,7 @@ void DisciplinaFechou(ulong deal)
    if(en!=DEAL_ENTRY_OUT && en!=DEAL_ENTRY_OUT_BY) return;
    long pos=HistoryDealGetInteger(deal,DEAL_POSITION_ID);
    if(PositionSelectByTicket((ulong)pos)) return;                // fechou só uma parte: espera fechar tudo
-   if(TgOk() && InpTgChat && !TgMaster()) return;                 // só um gráfico pergunta
+   if(TgOk() && TgChatOn() && !TgMaster()) return;                 // só um gráfico pergunta
    if(DiscTem(pos)) return;
    string sym=HistoryDealGetString(deal,DEAL_SYMBOL);
    long tipo=HistoryDealGetInteger(deal,DEAL_TYPE);
@@ -4973,7 +5157,7 @@ string AgendaTxt()
 }
 void BomDia()
 {
-   if(!TgOk() || (InpTgChat && !g_tgMaster)) return;
+   if(!TgOk() || (TgChatOn() && !g_tgMaster)) return;
    datetime br=AgoraBR(); MqlDateTime d; TimeToStruct(br,d);
    if(d.day_of_week==0 || d.day_of_week==6) return;
    if(d.hour!=8 || d.min>30) return;                         // ~08:00 de Brasília, dias úteis
@@ -4987,7 +5171,7 @@ void BomDia()
 string CalNum(double v){ return DoubleToString(v,(MathAbs(v)<10?2:1)); }
 void NoticiaResultado()
 {
-   if(!TgOk() || !CalOn() || (InpTgChat && !g_tgMaster)) return;
+   if(!TgOk() || !CalOn() || (TgChatOn() && !g_tgMaster)) return;
    LoadNews(); datetime now=TimeTradeServer();
    for(int i=0;i<ArraySize(g_news);i++)
    {
@@ -5395,7 +5579,14 @@ string RegraContextoIA(bool abertura)
    return r;
 }
 // linha curta pros sinais automáticos (AIAsk)
-string AgoraCurtoIA(){ return "AGORA: "+DiaHoraBR(AgoraBR(),true)+" (Brasília). "+(MercadoFechado()?"Mercado FECHADO.":"Mercado aberto.")+"\n"; }
+string AgoraCurtoIA()
+{
+   string pq,oq; string a=DecideAgora(pq,oq);
+   return "AGORA: "+DiaHoraBR(AgoraBR(),true)+" (Brasília). "+(MercadoFechado()?"Mercado FECHADO.":"Mercado aberto.")+"\n"
+         +"DECISAO_DO_ROBO (regra rígida, nota mínima "+IntegerToString(NotaForte())+"): "+a+". Por quê: "+pq+" O que fazer: "+oq+"\n"
+         +"COMO RESPONDER: o Vitor é leigo. Fale curto, gíria leve, sem sigla (diga vazio de preço, rompimento, mudança de direção, gráfico de 1 hora). "
+         +"Comece com o que fazer agora (COMPRAR/VENDER/ESPERAR/FICAR FORA) igual à DECISAO_DO_ROBO; nunca chame entrada que a decisão não chamou. Se der preço de stop/alvo, use só os números do contexto.\n";
+}
 
 //====================================================================
 // v12.6 — Alier que EXPLICA e que FAZ (lista fechada de ações seguras)
@@ -5478,7 +5669,7 @@ string AcaoExecuta(string nome,string params)
       return g_modoLimpo?"🧹 Modo limpo ligado: deixei só os níveis principais, o plano e as suas linhas.":"Modo limpo desligado: voltei todas as marcas."; }
    if(nome=="painel") return PainelBloco(AcaoP(params,0),AcaoP(params,1));
    if(nome=="balao"){ string a=Baixo(AcaoP(params,0)); bool on=!(a=="off"||a=="nao"||a=="desliga"||a=="0"); if(!on){ g_obsTxt=""; ObsApaga(); } return on?"O balão volta na próxima observação da IA.":"Tirei o balão da IA do gráfico."; }
-   if(nome=="nota_alerta"){ int v=(int)NumDe(AcaoP(params,0)); if(v<0||v>10) return "A nota vai de 0 a 10."; g_notaAlerta=v; PrefSalva(); return v==0?"Voltei a nota dos avisos pro padrão ("+IntegerToString(InpScoreTrade)+").":StringFormat("Beleza: só te aviso de setup com nota %d ou mais.",v); }
+   if(nome=="nota_alerta"){ int v=(int)NumDe(AcaoP(params,0)); if(v<0||v>10) return "A nota vai de 0 a 10."; g_notaAlerta=v; PrefSalva(); return v==0?"Voltei a nota dos avisos pro padrão ("+IntegerToString(MathMax(InpScoreTrade,NotaForte()))+").":StringFormat("Beleza: só te aviso de setup com nota %d ou mais.",v); }
    if(nome=="mudo" || nome=="som") return MudoMuda(AcaoP(params,0),nome=="mudo");
    if(nome=="pausa"){ PedeConfirmaPausa(true); return ""; }
    if(nome=="retoma"){ PedeConfirmaPausa(false); return ""; }
@@ -5558,7 +5749,7 @@ string MudoMuda(string tipo,bool mudo)
    PrefSalva();
    return mudo?"🔕 Silenciei os avisos de "+t+".":"🔔 Voltei os avisos de "+t+".";
 }
-int NotaAlertaMin(){ return g_notaAlerta>0?g_notaAlerta:InpScoreTrade; }
+int NotaAlertaMin(){ return g_notaAlerta>0?g_notaAlerta:MathMax(InpScoreTrade,NotaForte()); }   // v12.7: padrão 9 (você muda com /nota)
 // ---------------- alertas: remover + linha no gráfico ----------------
 int AlertaRemove(double preco)
 {
@@ -5640,7 +5831,7 @@ string LembreteAdd(string hhmm,string txt)
 string LembretesTxt(){ string l[]; int n=StringSplit(ArqLe(g_lembArq),'\n',l); string s=""; for(int i=0;i<n;i++){ string p[]; if(StringSplit(l[i],';',p)<2) continue; s+="⏰ "+DiaHoraBR((datetime)StringToInteger(p[0]),false,true)+" - "+p[1]+"\n"; } return s==""?"Nenhum lembrete marcado.":s; }
 void LembretesTimer()
 {
-   if(!TgOk() || (InpTgChat && !g_tgMaster)) return;
+   if(!TgOk() || (TgChatOn() && !g_tgMaster)) return;
    string s=ArqLe(g_lembArq); if(s=="") return;
    string l[]; int n=StringSplit(s,'\n',l); string o=""; datetime br=AgoraBR(); bool mudou=false;
    for(int i=0;i<n;i++)
@@ -5821,7 +6012,7 @@ void TradeCtxGrava(ulong deal)
       sym,tp==DEAL_TYPE_BUY?"compra":"venda",vol,FmtS(sym,px),aqui?g_pb.score:-1,aqui?g_ps.score:-1,aqui?(b.dir==1?"compra":"venda"):"-",CsvLimpo(st),CsvLimpo(aqui?g_engKZ:""),
       g_mtf[0],g_mtf[1],g_mtf[2],g_mtf[3],g_mtf[4],g_mtf[5],FmtS(sym,spr),aqui&&PlanoValido(b)?(b.dir==1?"compra":"venda"):"-",aqui&&PlanoValido(b)?Fmt(b.entry):"-",aqui&&PlanoValido(b)?Fmt(b.stop):"-",aqui&&PlanoValido(b)?Fmt(b.target):"-",CsvLimpo(g_pare),org));
    string rq=RegraQuebrada(vol);
-   if(rq!="" && TgOk() && (!InpTgChat || TgMaster())) SendMsg("⚠️ Opa, você abriu "+(tp==DEAL_TYPE_BUY?"compra":"venda")+" de "+sym+", mas tem uma regra sua: "+rq+". Tá seguindo o plano? Se for o caso, fecha com calma.");
+   if(rq!="" && TgOk() && (!TgChatOn() || TgMaster())) SendMsg("⚠️ Opa, você abriu "+(tp==DEAL_TYPE_BUY?"compra":"venda")+" de "+sym+", mas tem uma regra sua: "+rq+". Tá seguindo o plano? Se for o caso, fecha com calma.");
 }
 struct TradeLin { long pos; string sym; int dir; double vol; datetime t0; double p0; double sl; double tp; datetime t1; double p1; double net; string saida; bool aberta; };
 string SaidaTxt(long reason)
@@ -5943,7 +6134,8 @@ string ConhecimentoPadrao()
       "TRADING IN THE ZONE (Mark Douglas): um trade isolado nao precisa estar certo; o que importa e repetir um plano com risco definido, pensando em serie. Stop definido antes libera a cabeca. Padrao nao e obrigacao de lucro. Disciplina, nao seta.\n"+
       "HIPOTESES DO LABORATORIO (nenhuma provada): reacao no 50% do comando em Londres/NY; reteste apos rompimento de corpo; caca da faixa da Asia na abertura de Londres; OTE 62-70% do swing de Londres na abertura de NY; topos/fundos iguais + rompimento de corpo. Criterio: media > 0 depois dos custos, >= 200 operacoes, queda maxima ate 20%, testado em 2026 sem reotimizar.\n"+
       "PLANO DO PROJETO: 2 a 3 meses so na DEMO juntando dados (diarios CSV). Guardar todo mes parte do que entra na barbearia, fora do trade.\n"+
-      "COMO FALAR: cite esses numeros quando ajudar (ex.: \"nos testes, seguir a seta sozinha deu -0,32R por trade\"), sem inventar outros. Se nao souber, diga que nao sabe.\n"+"";
+      "COMO FALAR: cite esses numeros quando ajudar (ex.: \"nos testes, seguir a seta sozinha deu -0,32R por trade\"), sem inventar outros. Se nao souber, diga que nao sabe.\n"+
+      "- Desde a versao nova o painel e o /agora so dizem COMPRAR/VENDER com nota >= 9, horario bom, grafico de 1 hora a favor, alvo >= 2x o risco e preco perto da entrada. Nota 9-10 no teste: perto de zero (+0,02R 2016-2024, -0,10R 2025). Nao e vantagem comprovada, e so menos entradas e fora da faixa 7-8 que perdia.\n"+"";
 }
 // ================= detecção de pedidos em texto livre =================
 bool TemAlgum(string u,const string &k[]){ for(int i=0;i<ArraySize(k);i++) if(StringFind(u,k[i])>=0) return true; return false; }
@@ -5951,6 +6143,13 @@ bool EhPedidoExplica(string t)
 {
    string u=Baixo(t);
    string k[]={"explica o grafico","me explica o grafico","explique o grafico","o que e essa linha","o que sao essas linhas","que linha e essa","nao entendo as linha","nao to entendendo as linha","nao entendo o grafico","o que significa essa","o que e essa caixa","o que sao essas caixas","explica as linhas","explica essas linhas","o que e cada linha"};
+   return TemAlgum(u,k);
+}
+bool EhPedidoAgora(string t)
+{
+   string u=Baixo(t);
+   if(u=="agora" || u=="agora?" || u=="e agora" || u=="e agora?" || u=="e ai" || u=="e ai?") return true;
+   string k[]={"e agora","oq eu faco","o que eu faco","que que eu faco","compro ou vendo","compra ou vende","compra ou venda","devo comprar","devo vender","entro ou nao","entro agora","da pra entrar","posso entrar","to perdido","nao to entendendo nada","nao entendo nada","o que ta acontecendo","oq ta acontecendo","que ta acontecendo","me ajuda com o mercado","como ta o mercado","como ta o ouro"};
    return TemAlgum(u,k);
 }
 bool EhPedidoTrades(string t)
@@ -5968,6 +6167,7 @@ bool EhPedidoPodes(string t)
 // ================= comandos novos (chamado pelo TgHandle) =================
 bool AcoesCmd(string cmd,string args)
 {
+   if(cmd=="/agora"){ SendMsg(AgoraTexto()); return true; }
    if(cmd=="/explica"){ ExplicaEnvia(); return true; }
    if(cmd=="/aula"){ SendMsg(AulaTxt(args)); return true; }
    if(cmd=="/guia"){ SendMsg(GuiaTxt()); return true; }
@@ -6421,9 +6621,10 @@ string SvcStatus()
 {
    string s=AIStatus();
    if(g_tgHint!="" && g_cfgTgChat=="") return g_tgHint;
-   string t = !InpUseTelegram ? "Telegram: desligado" : (StringLen(g_cfgTgToken)<=20 ? "Telegram: coloque o token" :
+   if(g_netAviso!="") return g_netAviso;          // v12.7: um aviso só, sem link nem instrução
+   string t = (StringLen(g_cfgTgToken)<=20 ? "Telegram: falta o token (rode o INSTALAR.bat do seu kit)" :
               (StringLen(g_cfgTgChat)==0 ? "Telegram: mande /start pro seu bot (eu me conecto sozinho)" :
-              (MQLInfoInteger(MQL_TESTER) ? "Telegram: não roda no testador" : (InpTgChat ? (g_tgMaster?"Telegram: chat ATIVO neste gráfico (/ajuda)":"Telegram: chat atendido por outro gráfico") : ""))));
+              (MQLInfoInteger(MQL_TESTER) ? "Telegram: não roda no testador" : (TgChatOn() ? (g_tgMaster?"Telegram: chat ATIVO neste gráfico (/ajuda)":"Telegram: chat atendido por outro gráfico") : ""))));
    if(s!="" && t!="") return s+"  |  "+t;
    return s+t;
 }
@@ -6432,7 +6633,8 @@ void TentaOperar()
    Plano b; int di;
    b=MelhorPlano(); di=(b.dir==1?0:1);
    // sinal = nota cruza o limite com plano válido (RR >= InpMinRR)
-   bool cruzou = (PlanoValido(b) && b.score>=InpScoreTrade && g_prevScore[di]<InpScoreTrade);
+   int nmin=NotaAlertaMin();   // v12.7: mais rígido (padrão 9)
+   bool cruzou = (PlanoValido(b) && b.score>=nmin && g_prevScore[di]<nmin);
    g_prevScore[0]=PlanoValido(g_pb)?g_pb.score:0; g_prevScore[1]=PlanoValido(g_ps)?g_ps.score:0;
    string blk=Bloqueio(b);
    if(!TradeAtivo())
@@ -6448,7 +6650,7 @@ void TentaOperar()
       if(TgOk() && InpTgFoto && !MQLInfoInteger(MQL_TESTER)) TgFoto(StringFormat("%s SINAL %s %d/10",_Symbol,b.dir==1?"COMPRA":"VENDA",b.score));
       return;
    }
-   g_status = blk!="" ? blk : (TemPosOuOrdem()?"em operação (1 por vez)":StringFormat("aguardando nota >= %d",InpScoreTrade));
+   g_status = blk!="" ? blk : (TemPosOuOrdem()?"em operação (1 por vez)":StringFormat("aguardando nota >= %d",NotaAlertaMin()));
    if(!cruzou) return;
    if(blk!=""){ Diario(b,"pulado: "+blk); return; }
    if(TemPosOuOrdem()){ Diario(b,"pulado: já tem posição"); return; }
@@ -6526,7 +6728,8 @@ void OnTimer()
    Core_Update(true);
    static ulong lastPoll=0, lastMin=0; ulong ms=GetTickCount64();
    if(ms-lastPoll>=(ulong)MathMax(InpTgPollSeg,2)*1000){ lastPoll=ms; TgPoll(); }
-   if(ms-lastMin>=30000){ lastMin=ms; ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); LembretesTimer(); UsuarioDesenha(); g_statusSvc=SvcStatus(); }
+   if(ms-lastMin>=30000){ lastMin=ms; if(StringLen(g_cfgTgToken)<=20 || (StringLen(g_cfgAI2Key)<=10 && StringLen(g_cfgGem2)<=10)) CfgLoad();   // v12.7: chave chegou depois? pega sozinho
+      ParadaBatimento(); LoadNews(); TgPreAlerta(); NoticiaResultado(); BomDia(); TgResumos(); LearnTimer(); LembretesTimer(); UsuarioDesenha(); g_statusSvc=SvcStatus(); }
 }
 void OnTick()
 {
