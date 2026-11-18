@@ -96,7 +96,7 @@ try {
         Coletar -Dados $Dados -Instalacao $Instalacao
         exit 0
     }
-    $Fonte = Join-Path $Raiz "GOLDTREND_AUDITADO_DEMO_V3_30.mq5"
+    $Fonte = Join-Path $Raiz "GOLDTREND_LAB_DEMO_V0_10.mq5"
     if (-not (Test-Path -LiteralPath $Fonte -PathType Leaf)) { throw "Arquivo MQ5 nao esta junto do iniciador. Extraia o ZIP inteiro." }
     $textoFonte = Get-Content -LiteralPath $Fonte -Raw -ErrorAction Stop
     if ($textoFonte -notmatch "InpEnableDemoOrders\s*=\s*false" -or
