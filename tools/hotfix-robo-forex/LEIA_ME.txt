@@ -1,0 +1,17 @@
+HOTFIX ALIEN - 18 NOV 2026
+
+O erro MissingStatementBlock no PowerShell era causado por um if malformado.
+Este hotfix substitui o script ALIEN_ROBOFOREX.ps1 inteiro.
+
+PASSOS:
+1. Abra sua pasta extraida ALIEN_ROBOFOREX_JA_LOGADO_20261118.
+2. Substitua ALIEN_ROBOFOREX.ps1 pelo arquivo desta pasta.
+3. Execute 01_USAR_ROBOFOREX_ABERTO.bat.
+   Alternativa: execute EXECUTAR_CORRECAO.bat que veio com o hotfix.
+
+Nao fecha MT5, nao troca login, nao coloca ordens ao vivo.
+Nao copia arquivos na raiz dos robos antigos: utiliza Experts\ALIEN_LAB_SOMENTE_TESTADOR.
+Compila somente a fonte GOLDTREND_AUDITADO_DEMO_V3_30.mq5 se possuir
+as duas verificacoes de ambiente MQL_TESTER e ACCOUNT_TRADE_MODE_DEMO.
+O Strategy Tester precisa ser iniciado pelo usuario no MT5.
+Os logs sao colocados em ENVIAR_AO_CHATGPT.zip.
