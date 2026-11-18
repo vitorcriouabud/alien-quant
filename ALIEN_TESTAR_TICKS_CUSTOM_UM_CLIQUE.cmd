@@ -124,6 +124,7 @@ try {
     $customFiles = @(Get-ChildItem -LiteralPath $custom -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'ticks.dat' -or $_.Extension -eq '.tkc' })
     Mensagem ('Arquivos de ticks encontrados em Custom: ' + $customFiles.Count)
     foreach ($f in @($customFiles | Select-Object -First 8)) { Mensagem ('Ticks Custom: ' + $f.FullName) }
+    $sugestoes = @($customFiles | Where-Object { $_.Name -eq 'ticks.dat' -and $_.Directory.Name -match '(?i)XAU|GOLD' } | ForEach-Object { $_.Directory.Name } | Sort-Object -Unique)
 
     $destinoDir = Join-Path $dados 'MQL5\Experts\ALIEN_LAB_SOMENTE_TESTADOR'
     New-Item -ItemType Directory -Path $destinoDir -Force | Out-Null
@@ -177,8 +178,13 @@ Report=$nomeRelatorio
 ReplaceReport=1
 ShutdownTerminal=1
 "@
+    if($sugestoes.Count -eq 1) {
+        $iniTexto += "`r`nSymbol=$($sugestoes[0])`r`n"
+        Mensagem ('Simbolo Custom detectado automaticamente: ' + $sugestoes[0])
+    } else {
+        Mensagem 'SIMBOLO: sera usado o ultimo selecionado no Testador do MT5.'
+    }
     [System.IO.File]::WriteAllText($ini,$iniTexto,[System.Text.Encoding]::ASCII)
-    Mensagem 'SIMBOLO: sera usado o ultimo selecionado no Testador do MT5.'
     Mensagem 'Se o ultimo ativo nao for Custom, o auditor rejeitara o teste e registrara o erro.'
     Mensagem 'PERIODO: 05 a 12/02/2024, M1, Model=4 (ticks reais), sem ordens.'
     $abertos = @(Get-Process -Name 'terminal64' -ErrorAction SilentlyContinue | Where-Object {
