@@ -1398,7 +1398,7 @@ bool NewEntriesAllowedBySupervisor()
    if(EnableFridayClose)
    {
       MqlDateTime dtF;
-      TimeToStruct(TimeCurrent(), dtF);
+      TimeToStruct(AlienServerUTC(TimeCurrent()), dtF);
       if(dtF.day_of_week == 5 && dtF.hour >= FridayStopTradingHour)
       {
          supervisorMessage = StringFormat("SEXTA-FEIRA: Apos %02d:00 UTC novas operacoes sao bloqueadas para evitar risco de fim de semana.", FridayStopTradingHour);
@@ -1471,7 +1471,13 @@ void CloseAllPositionsInstantly(string exitReason)
       if(trade.PositionClose(ticket) && IsAcceptedRetcode(trade.ResultRetcode()))
       {
          LogEvent("EMERGENCY_CLOSE", exitReason, PositionGetDouble(POSITION_PROFIT));
-         Print("ALIEN V12: Posicao ", ticket, " fechada em emergencia: ", exitReason);
+         Print("ALIEN V12: pedido de fechamento aceito para ",ticket," motivo: ",exitReason);
+      }
+      else
+      {
+         Print("ALIEN V12 P0 CRITICO: falhou fechamento ",ticket,
+               " motivo=",exitReason," retcode=",trade.ResultRetcode(),
+               " detalhe=",trade.ResultRetcodeDescription());
       }
    }
 }
@@ -1484,7 +1490,9 @@ void CancelAllPendingOrders()
       if(ticket == 0) continue;
       if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
       if(OrderGetInteger(ORDER_MAGIC) != ExpertMagic) continue;
-      trade.OrderDelete(ticket);
+      if(!trade.OrderDelete(ticket) || !IsAcceptedRetcode(trade.ResultRetcode()))
+         Print("ALIEN V12 P0 CRITICO: falhou cancelamento pendente ",ticket,
+               " retcode=",trade.ResultRetcode()," detalhe=",trade.ResultRetcodeDescription());
    }
 }
 
@@ -4889,10 +4897,10 @@ bool ProtectedPositionForAddon(int direction)
 
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
-void OnTick()
+// P0 experimental: verificacao compartilhada entre OnTick e OnTimer.
+// Nao garante execucao sem liquidez, cotacao ou conexao com o servidor.
+bool AlienEnforceRiskCircuitBreakers()
 {
-   MqlTick tick;
-   if(!SymbolInfoTick(_Symbol, tick) || tick.time_msc <= 0) return;
    if(BeginningOfDay() != statsDayStart) RefreshDailyStats();
 
    RefreshTotalEquityBaseline();
@@ -4911,7 +4919,24 @@ void OnTick()
          CloseAllPositionsInstantly("TOTAL_ACCOUNT_CIRCUIT_BREAKER");
          CancelAllPendingOrders();
          supervisorMessage = StringFormat("DISJUNTOR TOTAL ATIVADO: Perda acumulada -$%.2f >= Teto -$%.2f. EA TRAVADO PERMANENTEMENTE.", totalLoss, TotalMaxLossMoney);
-         return;
+         return false;
+      }
+   }
+
+   // Disjuntor semanal: tentativa de encerramento, alem do veto de novas entradas.
+   if(WeeklyMaxLossMoney > 0.0)
+   {
+      RefreshWeeklyEquityBaseline();
+      double weeklyLoss = (weekOpeningEquity > 1.0) ? weekOpeningEquity-currentEq : 0.0;
+      if((weekOpeningEquity > 1.0 && weeklyLoss >= WeeklyMaxLossMoney) ||
+         weeklyRealizedNet <= -WeeklyMaxLossMoney || weeklyGuardTripped)
+      {
+         weeklyGuardTripped = true;
+         GlobalVariableSet(weeklyEquityKey+"_LOCK",1.0);
+         CloseAllPositionsInstantly("WEEKLY_CIRCUIT_BREAKER");
+         CancelAllPendingOrders();
+         supervisorMessage = "DISJUNTOR SEMANAL: fechamento solicitado; confira resultado da corretora.";
+         return false;
       }
    }
 
@@ -4929,7 +4954,7 @@ void OnTick()
          GlobalVariableSet(dailyEquityKey + "_LOCK", 1.0);
          CloseAllPositionsInstantly("HARD_CIRCUIT_BREAKER_LOSS");
          CancelAllPendingOrders();
-         supervisorMessage = StringFormat("CIRCUIT BREAKER: Perda -$%.2f >= Teto -$%.2f. Ordens zeradas.", curLoss, effectiveDailyLossLimit);
+         supervisorMessage = StringFormat("CIRCUIT BREAKER: Perda -$%.2f >= Teto -$%.2f. fechamento solicitado; confirmar execucao.", curLoss, effectiveDailyLossLimit);
       }
    }
 
@@ -4940,12 +4965,11 @@ void OnTick()
       if((dayOpeningEquity > 1.0 && currentDailyGain >= DailyProfitTargetMoney) || dailyRealizedNet >= DailyProfitTargetMoney || GlobalVariableCheck(dailyEquityKey + "_PROFIT_LOCK"))
       {
          GlobalVariableSet(dailyEquityKey + "_PROFIT_LOCK", 1.0);
-         if(OurPositionCount() > 0)
-         {
+         if(OurPositionCount()>0)
             CloseAllPositionsInstantly("DAILY_PROFIT_TARGET_SECURED");
-            CancelAllPendingOrders();
-         }
-         supervisorMessage = StringFormat("META DIARIA GARANTIDA: Lucro +$%.2f >= Meta +$%.2f. Posicoes zeradas e dia encerrado!", 
+         // Cancelar pendentes mesmo sem posicoes abertas (risco de preencher apos lock).
+         CancelAllPendingOrders();
+         supervisorMessage = StringFormat("META DIARIA ATINGIDA: Lucro +$%.2f >= Meta +$%.2f. fechamento solicitado; confirmar execucao", 
                                           (currentDailyGain > dailyRealizedNet ? currentDailyGain : dailyRealizedNet), DailyProfitTargetMoney);
       }
    }
@@ -4968,17 +4992,29 @@ void OnTick()
    if(EnableFridayClose)
    {
       MqlDateTime dtW;
-      TimeToStruct(TimeCurrent(), dtW);
+      // O relogio de trade server avanca nos timers sem um tick novo.
+      datetime serverClock = TimeTradeServer();
+      if(serverClock<=0) serverClock=TimeCurrent();
+      TimeToStruct(AlienServerUTC(serverClock), dtW);
       if(dtW.day_of_week == 5)
       {
          if(dtW.hour > FridayStopTradingHour || (dtW.hour == FridayStopTradingHour && dtW.min >= FridayForceCloseMinute))
          {
             CloseAllPositionsInstantly("FRIDAY_WEEKEND_FORCE_CLOSE");
             CancelAllPendingOrders();
-            supervisorMessage = "SEXTA-FEIRA: Posicoes zeradas para evitar risco de Gap no fim de semana.";
+            supervisorMessage = "SEXTA-FEIRA: fechamento de sexta solicitado; verificar execucao.";
          }
       }
    }
+
+   return true;
+}
+
+void OnTick()
+{
+   MqlTick tick;
+   if(!SymbolInfoTick(_Symbol, tick) || tick.time_msc <= 0) return;
+   if(!AlienEnforceRiskCircuitBreakers()) return;
 
    datetime newBar = iTime(_Symbol, PERIOD_M1, 0);
    if(newBar == 0) return;
@@ -5426,6 +5462,8 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   // Verifica disjuntores mesmo sem tick novo; fechamentos dependem do broker.
+   if(!AlienEnforceRiskCircuitBreakers()) return;
    RefreshDailyEquityBaseline();
    AlienRefreshSessionAMD();
    bool isNonVisualTester = (MQLInfoInteger(MQL_TESTER) && !MQLInfoInteger(MQL_VISUAL_MODE));
