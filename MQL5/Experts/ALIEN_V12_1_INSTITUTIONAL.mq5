@@ -2570,6 +2570,24 @@ bool SendEntry(int direction, const MqlTick &tick, int score, double spreadPts,
    }
    if(volume <= 0.0) { lastReason = "Lote invalido"; return false; }
 
+   // P0: o limite em USD nao pode permanecer fixo quando a equity diminui.
+   // Ex.: 0,25% de 4998.51 e 12.496275, abaixo dos 12.50 do preset.
+   // Antes, CheckExposure rejeitava TODA nova entrada sem calcular o SL.
+   // O orcamento agora apenas DIMINUI, nunca aumenta acima de RiskStopMoney.
+   double currentEquity=AccountInfoDouble(ACCOUNT_EQUITY);
+   double percentBudget=currentEquity*MaxRiskPercentEquity/100.0;
+   if(currentEquity<=0.0 || percentBudget<=0.0)
+   {
+      lastReason="Risco indisponivel: equity/percentual invalidos.";
+      lastRiskDecision=lastReason;
+      return false;
+   }
+   if(chosenRisk>percentBudget)
+   {
+      chosenRisk=percentBudget;
+      sizingExplanation=StringFormat("Risco reduzido pela equity: teto %.4f",chosenRisk);
+   }
+
    string exposureReason="";
    if(!CheckExposure(side,volume,price,chosenRisk,boosted||addon,exposureReason))
    {
