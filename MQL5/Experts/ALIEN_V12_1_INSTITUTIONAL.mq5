@@ -74,6 +74,7 @@ input double MinimumATRToSpread   = 3.0;  // Estimated M1 motion must exceed spr
 input group "=== PRICE ACTION / SMC / ICT - 3 SETUPS ==="
 input bool   EnableLiquiditySweep    = true;
 input bool   EnableBreakRetest       = true;  // DEMO: BOS com reteste confirmado, segunda estrategia
+input bool   RequireSweepCandleAlignment = false; // LAB A/B: TRUE veta sweep com candle M1 contra direcao, FALSE reproduz controle
 input bool   EnablePAMomentum        = false; // Continuar OFF: perdas historicas em momentum puro
 input bool   AllowZoneDirectEntries = false; // FVG/OB visuais; nao operam sozinhos
 input int    StructureLookbackBars   = 10;     // Highest/lowest of CLOSED M1 bars
@@ -5529,6 +5530,16 @@ void OnTick()
    {
       lastReason=StringFormat("%s: score tecnico %d/%d insuficiente.",
                               SetupName(signalSetup),lastScore,SweepMinimumEntryScore);
+      Dashboard(tick,longM,shortM,atrPts,trendM1,trendM5);
+      return;
+   }
+   // LAB A/B: somente entradas Sweep, somente informacao PRE-ENTRADA.
+   // lastFactor.candle foi calculado em ScoreSignal com o candle M1 em formacao;
+   // 0 = candle contra a direcao, 7/15 = alinhado. Nao antecipa candle fechado.
+   // DESLIGADO por padrao para preservar o comportamento do grupo-controle.
+   if(RequireSweepCandleAlignment && signalSetup==1 && lastFactor.candle==0)
+   {
+      lastReason="AB_CANDLE_FILTER: Sweep sem alinhamento do candle M1 no tick de entrada.";
       Dashboard(tick,longM,shortM,atrPts,trendM1,trendM5);
       return;
    }
