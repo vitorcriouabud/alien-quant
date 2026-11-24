@@ -267,6 +267,7 @@ input bool   WriteCsvJournal       = true;   // MT5 common files directory
 input bool   PrintDetailedReasons  = false;
 input bool   EnableTelemetry        = true;  // CSV de sinais/operacoes e resumo TXT
 input int    ReportEverySeconds    = 20;    // Relatorio atualizado continuamente
+input bool   EnableEntryObserver = true; // coleta passiva de MFE/MAE, sem mudar regras
 input int    TelemetryMaxRecords   = 500;   // Amostras por sessao (sem sobrescrever a historia CSV)
 
 struct TickMetrics
@@ -433,6 +434,12 @@ struct AlienTradeSample
    string entryAMDName;
    double net;
    double volume;
+   long obsOpenedMs;
+   double obsFill,obsRequest,obsInitialSL,obsInitialTP,obsRisk;
+   double obsMFE,obsMAE,obsMFE5,obsMAE5,obsMFE10,obsMAE10;
+   double obsMFE30,obsMAE30,obsMFE60,obsMAE60;
+   int obsN,obsN5,obsN10,obsN30,obsN60,obsSLMoves;
+   double obsLastSL;
    bool finished;
    string exitReason;
 };
@@ -677,6 +684,19 @@ void StoreEntryContext(ulong dealTicket, int dir, int score,
    records[at].entryAMDName = amdPhaseName;
    records[at].net = 0.0;
    records[at].volume = HistoryDealGetDouble(dealTicket,DEAL_VOLUME);
+   // Inicializacao explicita para registrar apenas informacoes OBSERVADAS.
+   records[at].obsOpenedMs=(long)HistoryDealGetInteger(dealTicket,DEAL_TIME_MSC);
+   records[at].obsFill=HistoryDealGetDouble(dealTicket,DEAL_PRICE);
+   records[at].obsRequest=records[at].obsFill;
+   records[at].obsInitialSL=0.0; records[at].obsInitialTP=0.0;
+   records[at].obsRisk=0.0; records[at].obsLastSL=0.0;
+   records[at].obsMFE=0.0; records[at].obsMAE=0.0;
+   records[at].obsMFE5=0.0; records[at].obsMAE5=0.0;
+   records[at].obsMFE10=0.0; records[at].obsMAE10=0.0;
+   records[at].obsMFE30=0.0; records[at].obsMAE30=0.0;
+   records[at].obsMFE60=0.0; records[at].obsMAE60=0.0;
+   records[at].obsN=0; records[at].obsN5=0; records[at].obsN10=0;
+   records[at].obsN30=0; records[at].obsN60=0; records[at].obsSLMoves=0;
    records[at].finished = false;
    records[at].exitReason = "Indefinido";
    LogEvent("SETUP",StringFormat("pos=%I64u dir=%s score=%d pressure=%d impulse=%d fast=%d candle=%d trend=%d cost=%d spread=%.1f atr=%.1f short=%.1f long=%.1f pressao=%.0f ema1=%d ema5=%d",
@@ -685,6 +705,65 @@ void StoreEntryContext(ulong dealTicket, int dir, int score,
             spread,atr,shortMove,longMove,pressure,m1,m5), 0.0);
 }
 
+// Telemetria: BUY e liquidado no BID, SELL no ASK; nenhuma ordem e enviada.
+void ObserverMeasure(int index,double liquidationPrice,long observedMs)
+{
+   if(!EnableTelemetry || !EnableEntryObserver || index<0 || index>=recordCount) return;
+   if(records[index].finished || liquidationPrice<=0.0 || records[index].obsFill<=0.0) return;
+   long age=observedMs-records[index].obsOpenedMs;
+   if(age<0) return;
+   double p=records[index].direction*(liquidationPrice-records[index].obsFill)/_Point;
+   records[index].obsMFE=MathMax(records[index].obsMFE,p);
+   records[index].obsMAE=MathMin(records[index].obsMAE,p);
+   records[index].obsN++;
+   if(age<=5000)
+   {
+      records[index].obsMFE5=MathMax(records[index].obsMFE5,p);
+      records[index].obsMAE5=MathMin(records[index].obsMAE5,p);
+      records[index].obsN5++;
+   }
+   if(age<=10000)
+   {
+      records[index].obsMFE10=MathMax(records[index].obsMFE10,p);
+      records[index].obsMAE10=MathMin(records[index].obsMAE10,p);
+      records[index].obsN10++;
+   }
+   if(age<=30000)
+   {
+      records[index].obsMFE30=MathMax(records[index].obsMFE30,p);
+      records[index].obsMAE30=MathMin(records[index].obsMAE30,p);
+      records[index].obsN30++;
+   }
+   if(age<=60000)
+   {
+      records[index].obsMFE60=MathMax(records[index].obsMFE60,p);
+      records[index].obsMAE60=MathMin(records[index].obsMAE60,p);
+      records[index].obsN60++;
+   }
+}
+void ObserverOnTick(const MqlTick &tick)
+{
+   if(!EnableTelemetry || !EnableEntryObserver) return;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket==0 || PositionGetString(POSITION_SYMBOL)!=_Symbol ||
+         (ulong)PositionGetInteger(POSITION_MAGIC)!=ExpertMagic) continue;
+      int index=FindSample((ulong)PositionGetInteger(POSITION_IDENTIFIER));
+      if(index<0 || records[index].finished) continue;
+      bool buy=(PositionGetInteger(POSITION_TYPE)==POSITION_TYPE_BUY);
+      double sl=PositionGetDouble(POSITION_SL);
+      if(records[index].obsInitialSL<=0.0) records[index].obsInitialSL=sl;
+      if(records[index].obsLastSL<=0.0) records[index].obsLastSL=sl;
+      if(sl>0.0 && records[index].obsLastSL>0.0 &&
+         (buy?sl>records[index].obsLastSL+0.5*_Point:sl<records[index].obsLastSL-0.5*_Point))
+      {
+         records[index].obsSLMoves++;
+         records[index].obsLastSL=sl;
+      }
+      ObserverMeasure(index,buy?tick.bid:tick.ask,tick.time_msc);
+   }
+}
 void RememberExitReason(ulong ticket, string reason)
 {
    if(!PositionSelectByTicket(ticket)) return;
@@ -5069,6 +5148,7 @@ void OnTick()
    bool indicatorsReady=cachedMarketReady;
    UpdateSweepDiagnostics(tick,shortM,atrPts,trendM1,trendM5);
 
+   ObserverOnTick(tick); // Somente monitoramento; stop, entrada e filtros INALTERADOS
    ManageOpenPosition(tick, shortM, atrPts);
    // Sempre gerenciar posicoes existentes antes de examinar novas entradas.
    if(!NewEntriesAllowedBySupervisor())
