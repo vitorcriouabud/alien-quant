@@ -477,6 +477,8 @@ int    pressureGroupCount[ALIEN_BUCKETS];
 int    pressureGroupWins[ALIEN_BUCKETS];
 double pressureGroupNet[ALIEN_BUCKETS];
 int    blockedCounts[8];
+int    obsGateCounts[9];
+long   obsGateLastSecond=-1;
 int    reasonGroupLast = -1;
 long   reasonLastSecond = -1;
 string eventFileName = "";
@@ -1096,6 +1098,10 @@ void WriteReport()
       "Inicio de candle","Outros"};
    for(int i=0;i<8;i++) ReportLine(f,StringFormat("  %s: %d",reasons[i],blockedCounts[i]));
    ReportLine(f,"----------------------------------------------------------------------");
+   ReportLine(f,"OBSERVADOR: motivos classificados por segundo de amostra (nao sao ticks nem trades)");
+   for(int og=0;og<9;og++)
+      ReportLine(f,StringFormat("  %s: %d segundos",ObserverGateName(og),obsGateCounts[og]));
+   ReportLine(f,"CSV TRADES: MFE/MAE observada nos primeiros 5/10/30/60s e ate fechamento; nao usa informacao futura para operar.");
    ReportLine(f,"COMO INTERPRETAR: maior acerto nao implica maior lucro; compare MEDIA LIQUIDA, numero de amostras, spread e perdas.");
    ReportLine(f,"O painel registra associacoes entre fatores e resultados, nao prova causalidade.");
    ReportLine(f,"O CSV TRADE registra cada operacao fechada com todas as condicoes da entrada.");
@@ -3667,10 +3673,58 @@ bool CheckInstitutionalNewsFilter()
    return false;
 }
 
+// Classifica o ultimo motivo de espera 1 vez por segundo, sem mudar as ordens.
+string ObserverGateName(int i)
+{
+   switch(i)
+   {
+      case 0:return "JANELA/SESSAO";
+      case 1:return "SPREAD/ATR/CUSTO";
+      case 2:return "TICKS/IMPULSO";
+      case 3:return "SCORE";
+      case 4:return "SWEEP/SETUP";
+      case 5:return "HTF/AMD";
+      case 6:return "RISCO/LIMITE";
+      case 7:return "POSICAO/COOLDOWN";
+      default:return "OUTROS";
+   }
+}
+int ObserverGateReason(string reason)
+{
+   if(StringFind(reason,"Fora da janela")>=0 ||
+      StringFind(reason,"FORA DA JANELA")>=0 ||
+      StringFind(reason,"Horario de cautela")>=0) return 0;
+   if(StringFind(reason,"Spread")>=0 || StringFind(reason,"spread")>=0 ||
+      StringFind(reason,"ATR")>=0 || StringFind(reason,"custo")>=0) return 1;
+   if(StringFind(reason,"tick")>=0 || StringFind(reason,"Tick")>=0 ||
+      StringFind(reason,"Impulso")>=0 || StringFind(reason,"impulso")>=0 ||
+      StringFind(reason,"pressao")>=0) return 2;
+   if(StringFind(reason,"Score")>=0 || StringFind(reason,"score")>=0) return 3;
+   if(StringFind(reason,"SWEEP")>=0 || StringFind(reason,"Sweep")>=0 ||
+      StringFind(reason,"BOS")>=0 || StringFind(reason,"sinal")>=0) return 4;
+   if(StringFind(reason,"HTF")>=0 || StringFind(reason,"AMD")>=0 ||
+      StringFind(reason,"EMAs")>=0) return 5;
+   if(StringFind(reason,"RISCO")>=0 || StringFind(reason,"Risco")>=0 ||
+      StringFind(reason,"DISJUNTOR")>=0 || StringFind(reason,"META DIARIA")>=0 ||
+      StringFind(reason,"SL exige")>=0 || StringFind(reason,"Margem")>=0) return 6;
+   if(StringFind(reason,"Posicao")>=0 || StringFind(reason,"posicao")>=0 ||
+      StringFind(reason,"candle")>=0 || StringFind(reason,"Pausa")>=0 ||
+      StringFind(reason,"intervalo")>=0) return 7;
+   return 8;
+}
+void ObserverSampleReason(const MqlTick &tick)
+{
+   if(!EnableTelemetry || !EnableEntryObserver) return;
+   long second=tick.time_msc/1000;
+   if(second==obsGateLastSecond) return;
+   obsGateLastSecond=second;
+   obsGateCounts[ObserverGateReason(lastReason)]++;
+}
 void Dashboard(const MqlTick &tick, TickMetrics &longM,
                TickMetrics &shortM, double atrPts, int trend1, int trend5)
 {
    ObserveReason();
+   ObserverSampleReason(tick);
    long nowMs=tick.time_msc;
    if(ShowDashboard && DashboardEveryMs>0 && lastPanelMs>0 &&
       nowMs-lastPanelMs<DashboardEveryMs) return;
