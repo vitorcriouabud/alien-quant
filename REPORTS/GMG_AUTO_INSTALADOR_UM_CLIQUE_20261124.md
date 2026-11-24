@@ -1,7 +1,7 @@
 # ALIEN GMG Visual — modo automático (24/11/2026)
 
 Pacote distribuído na conversa: `ALIEN_GMG_AUTOMATICO_TOTAL_V2_20261124.zip`.
-SHA256 do ZIP: `882bf3d6de4978c8f7c7738cae3ff75b9612d147533b35f9cb2090f58c3aeb07`.
+SHA256 do ZIP: `b0bbfe04b97eb7bfbb46c32846cb1ae7b1d869e430ae7b8da7538dd14d536b5d`.
 
 ## Escopo e entrega
 
@@ -10,7 +10,7 @@ SHA256 do ZIP: `882bf3d6de4978c8f7c7738cae3ff75b9612d147533b35f9cb2090f58c3aeb07
 - Cria uma configuração temporária `[StartUp] Script=ALIEN_GMG_AUTO_ANEXAR` com `[Experts] AllowLiveTrading=0` e inicia o terminal; script localiza XAUUSD/GOLD (incluindo sufixos), reutiliza ou abre gráfico M1 e anexa indicador com `iCustom` / `ChartIndicatorAdd`.
 - Verifica `MQL5/Files/ALIEN_GMG_AUTOSTART_RESULTADO.txt` após a inicialização; `OK_ADICIONADO` ou `OK_JA_INSTALADO` demonstra que o script concluiu. Ausência de arquivo NÃO é sucesso.
 - Gera relatório `RESULTADO_ALIEN_GMG_AUTO.txt` na Área de Trabalho e cria um atalho persistente para iniciar MT5 com o visual, mas **não registra inicialização automática no Windows**.
-- Caso o MT5 já esteja aberto, não o encerra à força, pois poderia comprometer atividades do usuário; orienta fechar normalmente e executar novamente.
+- Caso o MT5 já esteja aberto, instala e compila, mas não o encerra à força; orienta fechar normalmente e abrir pelo atalho criado. A configuração de inicialização inclui `Symbol=XAUUSD` como gráfico inicial, conforme o símbolo previamente usado nos testes da conta.
 - **Não altera a branch principal, o EA ALIEN V12.1, os presets, saldo, conta ou posições. Não envia ordens.**
 
 ## Limitações
