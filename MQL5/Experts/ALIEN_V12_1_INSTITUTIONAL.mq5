@@ -803,6 +803,9 @@ void ReconcileTrades()
             exits++;
             datetime t = (datetime)HistoryDealGetInteger(d, DEAL_TIME);
             if(t > closedAt) closedAt = t;
+            // Captura fill de saida para incluir slippage no ultimo MAE.
+            ObserverMeasure(i,HistoryDealGetDouble(d,DEAL_PRICE),
+                               (long)HistoryDealGetInteger(d,DEAL_TIME_MSC));
          }
       }
       if(exits == 0) continue;
@@ -926,7 +929,16 @@ void ReconcileTrades()
             records[i].zone,
             DoubleToString(records[i].zoneDist,1),
             DoubleToString(records[i].roomToLiquidity,1),
-            records[i].entrySessionName,records[i].entryAMDName);
+            records[i].entrySessionName,records[i].entryAMDName,
+            DoubleToString(records[i].obsRequest,_Digits),DoubleToString(records[i].obsFill,_Digits),
+            DoubleToString(records[i].obsInitialSL,_Digits),DoubleToString(records[i].obsInitialTP,_Digits),
+            DoubleToString(records[i].obsRisk,4),IntegerToString(records[i].obsSLMoves),
+            IntegerToString(records[i].obsN),
+            DoubleToString(records[i].obsMFE,1),DoubleToString(records[i].obsMAE,1),
+            DoubleToString(records[i].obsMFE5,1),DoubleToString(records[i].obsMAE5,1),IntegerToString(records[i].obsN5),
+            DoubleToString(records[i].obsMFE10,1),DoubleToString(records[i].obsMAE10,1),IntegerToString(records[i].obsN10),
+            DoubleToString(records[i].obsMFE30,1),DoubleToString(records[i].obsMAE30,1),IntegerToString(records[i].obsN30),
+            DoubleToString(records[i].obsMFE60,1),DoubleToString(records[i].obsMAE60,1),IntegerToString(records[i].obsN60));
          FileFlush(tradesFile);
       }
       LogEvent("CLOSED_POSITION",StringFormat("pos=%I64u score=%d result=%.4f",posId,records[i].score,totalNet),totalNet);
@@ -2819,6 +2831,18 @@ bool SendEntry(int direction, const MqlTick &tick, int score, double spreadPts,
       StoreEntryContext(trade.ResultDeal(),direction,score,spreadPts,atrPts,
                         shortM.movePoints,longM.movePoints,longM.directionPercent,
                         trendM1,trendM5);
+      if(EnableTelemetry && EnableEntryObserver && HistoryDealSelect(trade.ResultDeal()))
+      {
+         int at=FindSample((ulong)HistoryDealGetInteger(trade.ResultDeal(),DEAL_POSITION_ID));
+         if(at>=0)
+         {
+            records[at].obsRequest=price;
+            records[at].obsInitialSL=stop;
+            records[at].obsInitialTP=takeProfit;
+            records[at].obsRisk=expectedLoss;
+            records[at].obsLastSL=stop;
+         }
+      }
       if(!MQLInfoInteger(MQL_TESTER))
          ChartScreenShot(0, "ALIEN_LIVE_CONFLUENCE.png", 1280, 720, ALIGN_RIGHT);
       lastReason = (direction > 0 ? "BUY " : "SELL ") + SetupName(lastSetup) + " executada";
@@ -4878,7 +4902,11 @@ int OnInit()
                       "spread_pts","atr_pts","mov_curto_pts","mov_longo_pts","pressao_pct",
                       "ema_m1","ema_m5","motivo_saida","liquido_conta","lote",
                       "setup","nivel_estrutura","ema_m15","ema_h1","zona_htf","dist_zona_pts","espaco_liquidez_pts",
-                      "sessao_entrada","fase_amd_entrada");
+                      "sessao_entrada","fase_amd_entrada",
+                      "preco_solicitado","preco_fill","sl_inicial","tp_inicial","risco_estimado",
+                      "qtde_moves_sl","ticks_observados","mfe_pts","mae_pts",
+                      "mfe5_pts","mae5_pts","ticks5","mfe10_pts","mae10_pts","ticks10",
+                      "mfe30_pts","mae30_pts","ticks30","mfe60_pts","mae60_pts","ticks60");
          FileSeek(tradesFile,0,SEEK_END);
       }
       else Print("ALIEN V12.1 INSTITUTIONAL: falha abrindo CSV de operacoes: ",GetLastError());
