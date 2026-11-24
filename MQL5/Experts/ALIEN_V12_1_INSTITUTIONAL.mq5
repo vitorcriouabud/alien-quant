@@ -4940,7 +4940,8 @@ int OnInit()
    if(EnableTelemetry)
    {
       string key = _Symbol + "_" + IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)) +
-                   "_" + IntegerToString((long)ExpertMagic);
+                   "_" + IntegerToString((long)ExpertMagic) +
+                   (RequireSweepCandleAlignment ? "_B" : "_A"); // isola CSVs e evita mistura A/B
       string session=TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS);
       StringReplace(session,".","");
       StringReplace(session,":","");
