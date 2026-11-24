@@ -34,9 +34,13 @@
 - Comissões totais registradas no HTML -3,92; movimento do preço -5,81. PF 0,60 é MT5; PF recomputado sobre **P&L líquido por posição, com comissões alocadas** é 0,58, não é contradição.
 - Todos os 49 pares de preço solicitado vs preço de abertura efetiva no CSV coincidem. Isso não significa ausência de slippage de stop/saída. Não há garantia de sem slippage/gaps.
 
+## Semântica exata do fator `p_candle` (conferido no código MQL5)
+
+`ScoreSignal(..., candleMove)` calcula `alignedBar = candleMove * direction`. Se `alignedBar >= max(1, MinImpulsePoints)` atribui **15 pontos**; se `alignedBar >= 0` atribui **7 pontos**; caso contrário atribui **0**. O `candleMove` é observado no candle M1 ainda **em formação**; portanto, `p_candle>0` representa alinhamento/deslocamento intrabar naquele instante, **não é uma confirmação por candle fechado**. Também não é uma probabilidade de acerto.
+
 ## Interpretação
 
-O **primeiro candidato a hipótese de mudança** é exigir uma confirmação objetiva do candle M1 antes de aceitar Sweep, porque 42/49 entradas receberam pontuação zero no fator candle. **NÃO ATIVAR DIRETAMENTE** no sistema principal: apenas 7 observações têm pontuação não zero; pós-seleção nos seis pregões causa alto risco de overfitting. Da mesma forma, não inferir que trailing é solução pelo fato de posições com SL movido terem ganho: mover SL e sobrevivência são estados POSTERIORES à entrada e estão associados ao movimento favorável.
+O **primeiro candidato a hipótese de mudança** é testar o alinhamento/deslocamento intrabar M1 em relação à direção do Sweep antes de aceitar a entrada (e, separadamente, comparar confirmação por candle FECHADO, que seria outra hipótese), porque 42/49 entradas receberam pontuação zero no fator candle. **NÃO ATIVAR DIRETAMENTE** no sistema principal: apenas 7 observações têm pontuação não zero; pós-seleção nos seis pregões causa alto risco de overfitting. Da mesma forma, não inferir que trailing é solução pelo fato de posições com SL movido terem ganho: mover SL e sobrevivência são estados POSTERIORES à entrada e estão associados ao movimento favorável.
 
 A janela NY também não se pode declarar inferior de modo generalizável com apenas seis pregões.
 
