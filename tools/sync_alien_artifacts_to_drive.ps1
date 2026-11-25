@@ -7,8 +7,9 @@ $ErrorActionPreference = "Stop"
 # This tool only COPIES files to the locally synchronized Google Drive folder.
 # It never edits/deletes originals, connects to MT5, or sends trading orders.
 $DriveRoot = "G:\Meu Drive\ALIEN - Transferencia Automatica"
-$MaxFileBytes = 250MB
+$MaxFileBytes = 100MB
 $MinFileAgeSeconds = 45
+$ExcludedNamePattern = "(?i)password|senha|secret|token|credential|credencial|wallet|apikey|api_key|private.?key"
 $AllowedExtensions = @(
     ".csv", ".json", ".log", ".txt", ".htm", ".html",
     ".mq5", ".mqh", ".set", ".zip", ".md"
@@ -33,7 +34,7 @@ function Add-Candidate {
         ForEach-Object {
             $file = $_
             $relative = $file.FullName.Substring($SourceRoot.TrimEnd('\').Length).TrimStart('\')
-            $relevant = $true
+            $relevant = ($file.Name -notmatch $ExcludedNamePattern)
 
             if ($FilterMode -eq "AlienNamed") {
                 $relevant = ($file.FullName -match "(?i)ALIEN|XAUUSD|TICK|REPORT|RELATORIO|EXP[0-9]|DEBRIEF|TESTER")
@@ -120,7 +121,7 @@ function Invoke-OneSync {
 
             if ($source.Length -gt $MaxFileBytes) {
                 $skipped++
-                Write-Host ("IGNORADO (>250 MB): " + $source.Name) -ForegroundColor Yellow
+                Write-Host ("IGNORADO (>100 MB): " + $source.Name) -ForegroundColor Yellow
                 continue
             }
 
@@ -170,12 +171,13 @@ function Invoke-OneSync {
         ("Arquivos encontrados: " + $candidates.Count)
         ("Copiados/atualizados: " + $copied)
         ("Ja estavam atualizados: " + $unchanged)
-        ("Ignorados (recentes ou acima de 250 MB): " + $skipped)
+        ("Ignorados (recentes ou acima de 100 MB): " + $skipped)
         ("Falhas de leitura/copia: " + $errors)
         ""
         "Somente copia. Nenhum original foi alterado ou apagado."
-        "Nenhuma conexao MT5, ordem ou operacao financeira e executada."
-        "Arquivos acima de 250 MB sao ignorados para evitar sincronizacao enorme sem autorizacao."
+        "Nenhuma conexao MT5, ordem ou operacao financeira e executada.
+Nomes que indicam senha, token, credencial ou chave privada sao excluidos."
+        "Arquivos acima de 100 MB sao ignorados para evitar sincronizacao enorme sem autorizacao."
     )
     Set-Content -LiteralPath $statusPath -Value $status -Encoding UTF8
 
