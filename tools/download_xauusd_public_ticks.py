@@ -41,10 +41,19 @@ def make_request(url, headers=None, timeout=90):
     return urllib.request.urlopen(request, timeout=timeout)
 
 
-def fetch_json(url):
-    with make_request(url, timeout=60) as response:
-        raw = response.read()
-    return json.loads(raw.decode("utf-8")), raw
+def fetch_json(url, attempts=5):
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with make_request(url, timeout=60) as response:
+                raw = response.read()
+            return json.loads(raw.decode("utf-8")), raw
+        except Exception as exc:
+            last_error = exc
+            if attempt < attempts:
+                time.sleep(min(attempt * 2, 10))
+    raise RuntimeError("nao foi possivel ler manifesto/metadado: %s (%s)" %
+                       (url, last_error))
 
 
 def atomic_json(path, value):
