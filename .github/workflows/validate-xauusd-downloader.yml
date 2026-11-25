@@ -1,0 +1,31 @@
+name: Validate ALIEN public XAUUSD tick downloader
+
+on:
+  pull_request:
+    paths:
+      - "tools/download_xauusd_public_ticks.py"
+      - "tests/test_download_xauusd_public_ticks.py"
+      - "RUN_ALIEN_XAUUSD_DATA.cmd"
+      - "docs/ALIEN_PUBLIC_XAUUSD_TICK_DATA.md"
+  push:
+    branches:
+      - "data/dukascopy-xauusd-one-click-20261125"
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run streaming archive validation tests
+        run: python -m unittest discover -s tests -p "test_download_xauusd_public_ticks.py" -v
+      - name: Check downloader CLI
+        run: python tools/download_xauusd_public_ticks.py --help
