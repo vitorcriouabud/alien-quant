@@ -1,5 +1,14 @@
 # Executor quantitativo ALIEN
 
+## Fila quantitativa em operação no Dell
+
+O ALIEN_CENTRAL usa o mesmo supervisor na subpasta `MT5_DELL` para tarefas quantitativas. O Agendador do Windows inicia o processo no logon, com estado SQLite no SSD e cópia consistente no disco de acervo. A fila anterior continua disponível para Intelligence e seu histórico até a transferência do estado.
+
+Envie o envelope `alien.task/v1` para `ALIEN_CENTRAL/MT5_DELL/ENTRADA/pendentes/<id>.json`. A ação é `quant_backtest`. O resultado e o ZIP aparecem em `MT5_DELL/RESULTADOS/task_<id>`. O heartbeat próprio fica em `MT5_DELL/ESTADO/heartbeat.json`. Consulte o ID anterior se o envio for incerto. Para uma nova tentativa, use outro ID.
+
+O modo `remote-spread-sweep` compila o ALIEN V12.1 e testa o filtro `AbsoluteMaxSpreadPts` em 20, 25 e 30 pontos nos MetaTesters do Samsung. O XML e o diário precisam confirmar os três passes remotos. A triagem usa OHLC M1, uma janela curta anterior ao período reservado e o preset versionado. A validação econômica exige checagem separada com ticks reais.
+
+
 Estado em 26/11/2026. A referência inicial é o commit 90cdaed30e82c4292120f90ba0e0eeccafa6b56f da main. A implementação vive em experimental/alien-quant-executor. Esta sessão confirmou o repositório, o EA V12.1, o preset e a existência do catálogo de ferramentas. A política de aprovação bloqueou a criação de processos locais, incluindo inventário, Python e PowerShell. A pasta do Drive também não pôde ser aberta pela consulta web. A compilação, os testes do MT5, os agentes e a sincronização permanecem pendentes de evidência do Dell. Nenhum resultado quantitativo foi gerado nesta sessão.
 
 ## Decisões
