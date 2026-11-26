@@ -1,7 +1,7 @@
 """Fila de pesquisa ALIEN para uma instalação portátil dedicada do MT5."""
 import argparse
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 from html import unescape
 import json
@@ -21,6 +21,29 @@ REPO = Path(__file__).resolve().parents[1]
 EA = REPO / "MQL5/Experts/ALIEN_V12_1_INSTITUTIONAL.mq5"
 PRESET = REPO / "MQL5/Profiles/Tester/ALIEN_V12_1_INSTITUTIONAL.set"
 MARKER = ".alien-tester-only"
+DEFAULT_SOURCE = "roboforex-ecn"
+SOURCE_SERVERS = {DEFAULT_SOURCE: "RoboForex-ECN", "metaquotes-demo": "MetaQuotes-Demo"}
+HOLDOUT_START = date(2026, 11, 25)
+HOLDOUT_END = date(2026, 12, 9)
+
+
+class SourceUnavailable(RuntimeError):
+    """A origem solicitada não está configurada como DEMO nesta máquina."""
+
+
+def overlaps_holdout(start, stop):
+    return start <= HOLDOUT_END and stop > HOLDOUT_START
+
+
+def source_path(default, options, source):
+    configured = options.get("sources", {}).get(source)
+    if configured:
+        return Path(configured).resolve()
+    if source == DEFAULT_SOURCE:
+        return default
+    return None
+
+
 REMOTE_SWEEP = "remote-spread-sweep"
 SPREAD_VALUES = {20, 25, 30}
 SPREAD_PARAMETER = "AbsoluteMaxSpreadPts"
@@ -90,8 +113,11 @@ def utc():
 
 def parse_job(data):
     keys = {"from", "to", "mode", "symbol", "model"}
-    if not isinstance(data, dict) or set(data) != keys:
-        raise ValueError("Campos esperados: from, to, mode, symbol, model")
+    if not isinstance(data, dict) or set(data) - {"source"} != keys:
+        raise ValueError("Campos esperados: from, to, mode, symbol, model e source opcional")
+    source = data.get("source", DEFAULT_SOURCE)
+    if not isinstance(source, str) or source not in SOURCE_SERVERS:
+        raise ValueError("Fonte desconhecida. Consulte o catálogo de dados.")
     if data["mode"] not in ("local", "local-passes", "remote-passes", "mixed-passes", REMOTE_SWEEP):
         raise ValueError("Modo inválido")
     if not isinstance(data["symbol"], str) or not re.fullmatch(r"XAUUSD(?:[._-]?[A-Za-z0-9]{1,12})?", data["symbol"]):
@@ -105,6 +131,8 @@ def parse_job(data):
         dates.append(datetime.strptime(data[key], "%Y.%m.%d").date())
     if not 0 < (dates[1] - dates[0]).days <= 93:
         raise ValueError("Intervalo permitido de 1 a 93 dias")
+    if overlaps_holdout(dates[0], dates[1]):
+        raise ValueError("Janela de validação fora da amostra reservada.")
     if data["mode"] == REMOTE_SWEEP and (
         data["model"] != 1 or (dates[1] - dates[0]).days > 3
         or dates[1] >= datetime(2026, 11, 25).date()
@@ -158,16 +186,23 @@ def locked(path):
             msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
 
 
-def check_terminal(path):
+def check_terminal(path, source=DEFAULT_SOURCE):
+    if path is None:
+        raise SourceUnavailable(f"Fonte {source} sem terminal DEMO disponível no Dell.")
+    marker = path / f"{MARKER}.{source}"
+    if not marker.is_file():
+        marker = path / MARKER
     try:
-        demo = load(path / MARKER)
+        demo = load(marker)
     except (OSError, ValueError) as error:
-        raise RuntimeError("Configure o arquivo local .alien-tester-only do MT5 portátil DEMO") from error
+        raise SourceUnavailable(f"Fonte {source} sem configuração DEMO local.") from error
     if (not isinstance(demo, dict) or set(demo) != {"server", "login"}
             or not isinstance(demo["server"], str)
             or not re.fullmatch(r"[A-Za-z0-9.-]{1,80}", demo["server"])
             or type(demo["login"]) is not int or not 0 < demo["login"] < 2**63):
         raise ValueError("Identificação local DEMO inválida")
+    if demo["server"].casefold() != SOURCE_SERVERS[source].casefold():
+        raise SourceUnavailable(f"O terminal disponível não corresponde ao servidor de {source}.")
     for name in ("terminal64.exe", "metaeditor64.exe"):
         if not (path / name).is_file():
             raise RuntimeError(f"Executável ausente no MT5 portátil: {name}")
@@ -266,6 +301,13 @@ def prepare_preset(mt5, name, mode):
 
 def execute(mt5, run, meta):
     job = meta["task"]
+    source = job.get("source", DEFAULT_SOURCE)
+    meta["stage"] = "data_source"
+    meta["data_source"] = {
+        "id": source, "server": SOURCE_SERVERS[source],
+        "symbol": job["symbol"], "interval_clock": "tester_server_dates",
+    }
+    demo = check_terminal(mt5, source)
     name = f"alien_{uuid4().hex}"
     meta["tester_run"] = name
     meta["stage"] = "process_check"
@@ -282,7 +324,6 @@ def execute(mt5, run, meta):
     meta["stage"] = "config"
     preset = prepare_preset(mt5, name, job["mode"])
     meta["sha256_tester_preset"] = digest(preset)
-    demo = check_terminal(mt5)
     common = f"[Common]\nServer={demo['server']}\nNewsEnable=0\n"
     settings = tester_ini(job, name, preset.name)
     (run / "tester.ini").write_text(common + "\n" + settings, encoding="ascii")
@@ -301,14 +342,15 @@ def execute(mt5, run, meta):
         private_settings.unlink(missing_ok=True)
         collect_journal(tester_logs, offsets, run)
     meta["stage"] = "report"
+    journal = "\n".join(text_file(path) for path in run.glob("journal-*.log"))
     if meta.get("history_transient"):
-        journal = "\n".join(text_file(path) for path in run.glob("journal-*.log"))
         if re.search(r"no history data|test(?:ing)? [^\n]*stop", journal, re.I):
             raise RetryableRun("Download ou conexão de histórico interrompido.")
     suffix = ".htm" if job["mode"] == "local" else ".xml"
     report = report_dir / ("report" + suffix)
     if meta["terminal_exit"] or not report.is_file() or not report.stat().st_size:
         raise RuntimeError("MT5 não produziu o relatório esperado com saída bem-sucedida")
+    verify_report_source(journal, job, meta)
     for path in report_dir.iterdir():
         if path.is_file() and path.suffix.lower() in {suffix, ".png", ".gif"}:
             shutil.copyfile(path, run / path.name)
@@ -323,6 +365,18 @@ def execute(mt5, run, meta):
 
 class InvalidBacktestReport(ValueError):
     """O HTML existe, mas não comprova uma simulação válida."""
+
+
+def verify_report_source(journal, job, meta):
+    symbol = re.escape(job["symbol"])
+    pattern = rf"\b{symbol},M1\s*\(([A-Za-z0-9.-]+)\)\s*:"
+    seen = sorted(set(re.findall(pattern, journal, re.I)))
+    expected = meta["data_source"]["server"].casefold()
+    meta["data_source"]["observed_servers"] = seen
+    if seen and any(server.casefold() != expected for server in seen):
+        raise InvalidBacktestReport("O servidor observado no diário diverge da fonte solicitada.")
+    if job["mode"] == "local" and job["model"] == 4 and not seen:
+        raise InvalidBacktestReport("O diário do MT5 não identifica a fonte dos ticks da rodada.")
 
 
 def validate_backtest_report(report, job, name, meta):
@@ -639,7 +693,7 @@ def retryable(error):
 def failure_summary(error):
     if isinstance(error, subprocess.TimeoutExpired):
         return f"Subprocesso excedeu {error.timeout} s."
-    if isinstance(error, (RetryableRun, InvalidBacktestReport)):
+    if isinstance(error, (RetryableRun, InvalidBacktestReport, SourceUnavailable)):
         return str(error)
     if isinstance(error, subprocess.CalledProcessError):
         return f"Subprocesso encerrou com código {error.returncode}."
@@ -675,7 +729,8 @@ def run_job(mt5, run, data, meta=None):
     try:
         meta["task"] = parse_job(data)
     except ValueError as error:
-        meta.update(status="failed", stage="validation", error_type=type(error).__name__, finished=utc())
+        meta.update(status="failed", stage="validation", error_type=type(error).__name__,
+                    failure_reason=str(error), finished=utc())
         write_diagnostics(run / "diagnostico-tarefa.txt", None, meta, error)
         save(manifest, meta)
         return
@@ -730,7 +785,7 @@ def run_job(mt5, run, data, meta=None):
     save(manifest, meta)
 
 
-def supervised(mt5, state, task_id):
+def supervised(mt5, state, task_id, options):
     if not re.fullmatch(r"task_[a-zA-Z0-9_-]{1,80}", task_id or ""):
         raise ValueError("ID de tarefa inválido")
     if state.is_relative_to(mt5) or mt5.is_relative_to(state):
@@ -740,13 +795,21 @@ def supervised(mt5, state, task_id):
     bundles = state / "bundles"
     for folder in (runs, bundles):
         folder.mkdir(parents=True, exist_ok=True)
-    with locked(mt5 / ".alien-executor.lock"):
+    with locked(state / ".dispatch.lock"):
         run = runs / task_id
         run.mkdir(exist_ok=True)
         manifest = run / "result.json"
         meta = load(manifest) if manifest.is_file() else None
         if meta is None or meta["status"] == "running":
-            run_job(mt5, run, data, meta)
+            source = data.get("source", DEFAULT_SOURCE) if isinstance(data, dict) else DEFAULT_SOURCE
+            selected = source_path(mt5, options, source) if isinstance(source, str) else None
+            if selected is not None and (state.is_relative_to(selected) or selected.is_relative_to(state)):
+                raise ValueError("Estado do supervisor e MT5 devem ser separados")
+            if selected is not None and selected.is_dir():
+                with locked(selected / ".alien-executor.lock"):
+                    run_job(selected, run, data, meta)
+            else:
+                run_job(None, run, data, meta)
         publish(run, bundles)
 
 
@@ -772,18 +835,26 @@ def diagnose(mt5, shared):
 
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
-    cli.add_argument("command", choices=("diagnose", "once", "watch", "supervised"))
+    cli.add_argument("command", choices=("diagnose", "once", "watch", "supervised", "catalog"))
     cli.add_argument("--mt5", type=Path, required=True)
     cli.add_argument("--shared", type=Path)
     cli.add_argument("--task-id")
+    cli.add_argument("--source-config", type=Path)
     cli.add_argument("--state", type=Path)
     args = cli.parse_args()
     mt5 = args.mt5.resolve()
+    options = load(args.source_config) if args.source_config else {}
+    if args.command == "catalog":
+        if args.state is None or args.source_config is None:
+            cli.error("O catálogo exige --state e --source-config")
+        catalog = run_path(str(REPO / "tools/alien_data_catalog.py"))["build_catalog"]
+        result = catalog(options, args.state.resolve(), mt5, SOURCE_SERVERS, source_path, check_terminal, overlaps_holdout)
+        print(json.dumps(result, ensure_ascii=True))
+        return
     if args.command == "supervised":
         if args.state is None:
             cli.error("--state é obrigatório no modo supervised")
-        check_terminal(mt5)
-        supervised(mt5, args.state.resolve(), args.task_id)
+        supervised(mt5, args.state.resolve(), args.task_id, options)
         return
     if args.shared is None:
         cli.error("--shared é obrigatório")

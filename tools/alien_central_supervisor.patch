@@ -40,7 +40,7 @@
              return None, f"unsupported_action:{action or 'missing'}", payload
          task_id = f"task_{input_id}" if input_id else f"task_{uuid.uuid5(uuid.NAMESPACE_URL, task_hash)}"
  
-@@ -592,7 +598,37 @@
+@@ -592,7 +598,39 @@
          }
          return result
  
@@ -50,7 +50,8 @@
 +        options = json.loads((self.local_state / "quant_executor.json").read_text(encoding="utf-8-sig"))
 +        checkout = Path(options["checkout"]).resolve()
 +        mt5 = Path(options["installation"]).resolve()
-+        if checkout.is_relative_to(self.workspace) or mt5.is_relative_to(self.workspace):
++        sources = [Path(value).resolve() for value in options.get("sources", {}).values()]
++        if any(path.is_relative_to(self.workspace) for path in [checkout, mt5, *sources]):
 +            raise ValueError("Checkout e MT5 portatil precisam ficar fora da pasta do Drive.")
 +        runner = checkout / "tools" / "alien_quant_executor.py"
 +        state = self.local_state / "quant"
@@ -58,7 +59,8 @@
 +        try:
 +            subprocess.run(
 +                [sys.executable, "-I", str(runner), "supervised", "--mt5", str(mt5),
-+                 "--state", str(state), "--task-id", task_id],
++                 "--state", str(state), "--task-id", task_id,
++                 "--source-config", str(self.local_state / "quant_executor.json")],
 +                input=payload_json, text=True, cwd=checkout, timeout=13 * 3600,
 +                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
 +            )
@@ -78,7 +80,7 @@
          if action == "diagnose":
              return {"summary": "Diagnostico somente leitura concluido.", "findings": [self.diagnose()], "evidence": [], "uncertainties": [], "errors": []}
          if action == "collect":
-@@ -604,6 +640,11 @@
+@@ -604,6 +642,11 @@
          raise RuntimeError(f"Acao nao implementada: {action}")
  
      def stage_result(self, row: sqlite3.Row, result: Optional[dict] = None, error: Optional[str] = None) -> None:
@@ -90,7 +92,7 @@
          response = {
              "schema": "alien.result/v1",
              "task_id": row["task_id"],
-@@ -615,7 +656,10 @@
+@@ -615,7 +658,10 @@
              "summary": result.get("summary", "Tarefa conclu?da.") if result is not None else "A tarefa terminou com erro.",
              "result": result or {},
              "input_sha256": row["sha256"],
@@ -102,7 +104,7 @@
              "errors": [{"message": error}] if error is not None else result.get("errors", []),
          }
          with self.conn:
-@@ -630,6 +674,17 @@
+@@ -630,6 +676,17 @@
              raise ValueError("Identificador inv?lido no banco.")
          response = json.loads(row["result_json"])
          result_path = self.resultados / task_id / "RESULTADO.json"
@@ -120,3 +122,65 @@
          if result_path.exists():
              existing = json.loads(result_path.read_text(encoding="utf-8-sig"))
              if existing != response:
+@@ -737,13 +794,51 @@
+             })
+             self.set_state("intelligence", {"utc": utc_now(), "status": "error", "uses_ai": False})
+ 
++    def refresh_data_catalog(self) -> None:
++        config = self.local_state / "quant_executor.json"
++        if not config.is_file():
++            return
++        cache = self.local_state / "data_catalog.stamp"
++        target = self.estado / "CATALOGO_DADOS_ALIEN.json"
++        try:
++            last_run = self.conn.execute(
++                "SELECT MAX(completed_utc) FROM tasks WHERE action = ?", (QUANT_ACTION,)
++            ).fetchone()[0]
++            if (cache.is_file() and target.is_file()
++                    and cache.stat().st_mtime >= config.stat().st_mtime
++                    and time.time() - cache.stat().st_mtime < 300
++                    and cache.read_text(encoding="utf-8") == (last_run or "")):
++                return
++            options = json.loads(config.read_text(encoding="utf-8-sig"))
++            if "catalog" not in options:
++                return
++            checkout = Path(options["checkout"]).resolve()
++            mt5 = Path(options["installation"]).resolve()
++            if checkout.is_relative_to(self.workspace) or mt5.is_relative_to(self.workspace):
++                raise ValueError("Caminhos locais do catálogo não podem apontar para o Drive.")
++            output = subprocess.run(
++                [sys.executable, "-I", str(checkout / "tools/alien_quant_executor.py"),
++                 "catalog", "--mt5", str(mt5), "--state", str(self.local_state / "quant"),
++                 "--source-config", str(config)],
++                cwd=checkout, capture_output=True, text=True, check=True, timeout=90,
++            )
++            catalog = json.loads(output.stdout)
++            if catalog.get("schema") != "alien.data_catalog/v1":
++                raise ValueError("Esquema do catálogo inválido.")
++            atomic_json(target, catalog)
++            atomic_bytes(cache, (last_run or "").encode("utf-8"))
++        except (KeyError, OSError, ValueError, subprocess.SubprocessError) as exc:
++            self.log_event(None, "data_catalog_failed", {"type": type(exc).__name__})
++
+     def run_once(self) -> dict:
+         if not self.acquire_lock():
+             return {"status": "skipped", "reason": "another_supervisor_instance"}
+         try:
+             recovered = self.recover_interrupted_tasks()
+             summary = self.ingest()
++            self.refresh_data_catalog()
+             self.drain_tasks()
++            self.refresh_data_catalog()
+             self.run_intelligence()
+             summary["recovered"] = recovered
+             self.record_cycle(summary)
+@@ -753,7 +848,9 @@
+ 
+     def run_worker(self) -> None:
+         with closing(AlienSupervisor(self.central, self.local_state)) as worker:
++            worker.refresh_data_catalog()
+             worker.drain_tasks()
++            worker.refresh_data_catalog()
+             worker.run_intelligence()
+ 
+     def run_forever(self) -> bool:

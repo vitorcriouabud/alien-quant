@@ -80,3 +80,24 @@ Git tem 90 s por comando e MetaEditor, 10 minutos. O MT5 tem até 6 horas por te
 Cada ID pode realizar até duas tentativas. Timeouts, interrupções reconhecidas de histórico e erros transitórios de I/O podem ser repetidos. A validação de ticks reais rejeita substituição por ticks gerados e cobertura abaixo de 100% quando informada. Após reinício, o supervisor reencaminha tarefas quantitativas interrompidas dentro do limite de retomada. O executor reaproveita uma tentativa concluída.
 
 O ZIP inclui diagnóstico de tentativa malsucedida com etapa, prazo e eventos selecionados do diário. Logs brutos e configuração da conta permanecem locais.
+
+## Seleção de fontes e catálogo
+
+Na fila `MT5_DELL`, use a ação `quant_backtest` do envelope `alien.task/v1`.
+O campo `payload.source` aceita `roboforex-ecn` ou `metaquotes-demo`. Tarefas
+legadas sem esse campo usam `roboforex-ecn`. O mapa entre os IDs e os terminais
+portáteis DEMO fica no `quant_executor.json` local, fora do Drive. O campo da
+tarefa aceita apenas IDs fixos. Um perfil ausente retorna `SourceUnavailable`
+na etapa `data_source`. O manifesto registra a fonte e, para ticks reais em
+execuções locais, exige confirmação do servidor no diário do MT5.
+
+O supervisor atualiza `MT5_DELL/ESTADO/CATALOGO_DADOS_ALIEN.json` após os
+backtests e periodicamente. O catálogo mantém cobertura verificada por fonte,
+símbolo e intervalo, junto com inventário nominal e disponibilidade dos
+perfis. Um arquivo de cache mensal ou um CSV encontrado conta como inventário.
+A cobertura é publicada apenas quando existe evidência de execução. O catálogo
+de CSVs lê cabeçalhos e registra metadados e tamanho.
+
+O Strategy Tester usa datas do servidor, com início inclusivo e fim exclusivo.
+A reserva de 25/11/2026 a 09/12/2026, inclusive, impede qualquer tarefa dessa fila
+cujo intervalo cruze essa janela, em qualquer fonte ou modo.

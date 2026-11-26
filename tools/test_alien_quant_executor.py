@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import alien_data_catalog as catalog
 import alien_quant_executor as executor
 
 TASK = {
@@ -15,6 +16,53 @@ TASK = {
     "symbol": "XAUUSD",
     "model": 4,
 }
+
+
+class DataSourceTests(unittest.TestCase):
+    def test_source_selection_does_not_fall_back_to_another_broker(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertEqual(executor.source_path(root, {}, "roboforex-ecn"), root)
+            self.assertIsNone(executor.source_path(root, {}, "metaquotes-demo"))
+            executor.save(root / executor.MARKER, {"server": "RoboForex-ECN", "login": 1})
+            with self.assertRaises(executor.SourceUnavailable):
+                executor.check_terminal(root, "metaquotes-demo")
+        with self.assertRaisesRegex(ValueError, "Fonte desconhecida"):
+            executor.parse_job({**TASK, "source": "../untrusted"})
+
+    def test_holdout_blocks_overlap_with_exclusive_end(self):
+        for start, stop in [("2026.11.24", "2026.11.25"), ("2026.12.10", "2026.12.11")]:
+            self.assertEqual(executor.parse_job({**TASK, "from": start, "to": stop})["to"], stop)
+        for start, stop in [("2026.11.24", "2026.11.26"), ("2026.11.25", "2026.11.26"),
+                            ("2026.12.09", "2026.12.10")]:
+            with self.assertRaisesRegex(ValueError, "reservada"):
+                executor.parse_job({**TASK, "from": start, "to": stop})
+
+    def test_source_in_native_journal_must_match(self):
+        meta = {"data_source": {"server": "MetaQuotes-Demo"}}
+        for journal in ("no history", "XAUUSD,M1 (RoboForex-ECN): tested"):
+            with self.assertRaises(executor.InvalidBacktestReport):
+                executor.verify_report_source(journal, TASK, meta)
+        executor.verify_report_source("XAUUSD,M1 (MetaQuotes-Demo): tested", TASK, meta)
+        self.assertEqual(meta["data_source"]["observed_servers"], ["MetaQuotes-Demo"])
+
+    def test_catalog_reserved_csv_reads_header_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "XAUUSD_20261125.csv"
+            path.write_bytes(b"time_msc,bid,ask\n\xff")
+            entry = catalog.csv_metadata({"path": path, "holdout": True})
+            self.assertEqual(entry["columns"], ["time_msc", "bid", "ask"])
+            self.assertTrue(entry["holdout"])
+            self.assertFalse(entry["selectable"])
+            self.assertFalse(entry["coverage_verified"])
+
+    def test_catalog_does_not_infer_coverage_from_container_names(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            path = root / "RoboForex-ECN/ticks/XAUUSD/202611.tkc"
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"fixture")
+            self.assertFalse(catalog.inventory(root, "fixture")[0]["coverage_verified"])
 
 
 class ExecutionRecoveryTests(unittest.TestCase):
