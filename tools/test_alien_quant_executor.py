@@ -1,4 +1,4 @@
-﻿"""Regressões do watchdog e da publicação de falhas do executor ALIEN."""
+"""Regressões do watchdog e da publicação de falhas do executor ALIEN."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -109,6 +109,14 @@ class ExecutionRecoveryTests(unittest.TestCase):
         self.assertEqual(phase, "simulation")
         self.assertIsNone(executor.terminal_deadline(phase, 0, 1790, 1800))
         self.assertIn("limite total", executor.terminal_deadline(phase, 0, 21590, 21600))
+
+    def test_late_tick_start_with_generated_ticks_is_fallback(self):
+        state = {"phase_changes": []}
+        executor.observe_journal(
+            "real ticks begin from 2026.11.24 00:00:00, every tick generation used",
+            "simulation", state,
+        )
+        self.assertTrue(state["tick_fallback_seen"])
 
     def test_bom_and_appended_utf16_history_events(self):
         log = self.base / "tester.log"

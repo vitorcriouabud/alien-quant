@@ -52,6 +52,7 @@ TRANSIENT_HISTORY = re.compile(
 )
 FALLBACK = re.compile(
     r"no real ticks[^\n]*tick generation used|"
+    r"real ticks begin from[^\n]*every tick generation used|"
     r"real ticks (?:discarded|missing) for [1-9][0-9]* minute|"
     r"real ticks unavailable[^\n]*generat", re.I,
 )
@@ -64,7 +65,7 @@ SAFE_JOURNAL_EVENT = re.compile(
     r"history (?:ticks )?synchronization (?:started|completed)|"
     r"no history data(?:, stop testing)?|no real ticks, every tick generation used|"
     r"real ticks (?:discarded|missing) for \d+ minutes?|"
-    r"real ticks begin from \d{4}\.\d{2}\.\d{2}(?: \d{2}:\d{2}:\d{2})?|"
+    r"real ticks begin from \d{4}\.\d{2}\.\d{2}(?: \d{2}:\d{2}:\d{2})?(?:, every tick generation used)?|"
     r"generating based on real ticks|connection (?:failed|lost|timed out|closed)|"
     r"failed to connect|authorization failed|automatic testing finished|"
     r"test passed(?: in [\d:.]+)?|optimization finished(?:, total passes \d+)?|"
