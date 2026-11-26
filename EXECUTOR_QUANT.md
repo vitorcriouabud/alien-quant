@@ -72,3 +72,11 @@ Envie o envelope abaixo para `ENTRADA/pendentes/<id>.json`. Consulte `RESULTADOS
 ```
 
 O supervisor registra falhas no mesmo banco e reaproveita o pacote em tentativas de publicação. Confirme ticks reais e agentes pelo diário da execução. O código de saída e a existência do XML não identificam os agentes responsáveis.
+
+## Prazos, retentativas e diagnóstico
+
+Git tem 90 s por comando e MetaEditor, 10 minutos. O MT5 tem até 6 horas por tentativa. Os limites sem progresso são 10 minutos na inicialização, 20 no histórico e 30 na simulação. O monitor usa o diário, o crescimento do cache e a atividade do processo. O supervisor limita a tarefa a 13 horas.
+
+Cada ID pode realizar até duas tentativas. Timeouts, interrupções reconhecidas de histórico e erros transitórios de I/O podem ser repetidos. A validação de ticks reais rejeita substituição por ticks gerados e cobertura abaixo de 100% quando informada. Após reinício, o supervisor reencaminha tarefas quantitativas interrompidas dentro do limite de retomada. O executor reaproveita uma tentativa concluída.
+
+O ZIP inclui diagnóstico de tentativa malsucedida com etapa, prazo e eventos selecionados do diário. Logs brutos e configuração da conta permanecem locais.

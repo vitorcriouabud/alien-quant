@@ -25,6 +25,52 @@ REMOTE_SWEEP = "remote-spread-sweep"
 SPREAD_VALUES = {20, 25, 30}
 SPREAD_PARAMETER = "AbsoluteMaxSpreadPts"
 NODES = ("192.168.3.47:2000", "192.168.3.47:2001")
+GIT_TIMEOUT = 90
+COMPILE_TIMEOUT = 600
+TERMINAL_TIMEOUT = 6 * 3600
+ATTEMPT_LIMIT = 2
+RETRY_DELAY = 20
+IDLE_LIMITS = {"initialization": 600, "history": 1200, "simulation": 1800}
+POLL_SECONDS = 15
+HISTORY_START = re.compile(
+    r"preliminary downloading of history ticks started|"
+    r"history (?:ticks )?(?:downloading|synchronization) started|"
+    r"synchronizing (?:the )?(?:ticks|history)", re.I,
+)
+HISTORY_DONE = re.compile(
+    r"preliminary downloading of history ticks completed|"
+    r"history (?:ticks )?(?:downloading|synchronization) completed", re.I,
+)
+SIMULATION_START = re.compile(
+    r"generating based on real ticks|\btesting of .+ started\b|"
+    r"\b(?:complete |genetic )?optimization started\b|\btest(?:ing)? started\b", re.I,
+)
+TRANSIENT_HISTORY = re.compile(
+    r"preliminary downloading of history ticks cancel[le]*d|"
+    r"history[^\n]{0,60}(?:timed out|download failed)|"
+    r"connection (?:failed|lost|timed out)|failed to connect", re.I,
+)
+FALLBACK = re.compile(
+    r"no real ticks[^\n]*tick generation used|"
+    r"real ticks (?:discarded|missing) for [1-9][0-9]* minute|"
+    r"real ticks unavailable[^\n]*generat", re.I,
+)
+REAL_TICKS = re.compile(
+    r"real ticks begin from|real ticks synchronization completed|"
+    r"generat(?:ing|ed) based on real ticks|using real ticks", re.I,
+)
+SAFE_JOURNAL_EVENT = re.compile(
+    r"\b(?:preliminary downloading of history ticks (?:started|completed|cancel[le]*d)|"
+    r"history (?:ticks )?synchronization (?:started|completed)|"
+    r"no history data(?:, stop testing)?|no real ticks, every tick generation used|"
+    r"real ticks (?:discarded|missing) for \d+ minutes?|"
+    r"real ticks begin from \d{4}\.\d{2}\.\d{2}(?: \d{2}:\d{2}:\d{2})?|"
+    r"generating based on real ticks|connection (?:failed|lost|timed out|closed)|"
+    r"failed to connect|authorization failed|automatic testing finished|"
+    r"test passed(?: in [\d:.]+)?|optimization finished(?:, total passes \d+)?|"
+    r"local \d+ tasks \([\d.%]+\), remote \d+ tasks \([\d.%]+\), cloud \d+ tasks \([\d.%]+\))\b",
+    re.I,
+)
 
 
 def save(path, value):
@@ -85,13 +131,16 @@ def tester_ini(job, name, parameters):
     )
 
 
-def text_file(path):
-    data = path.read_bytes()
+def decode_log(data):
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return data.decode("utf-16", errors="replace")
     if data[:100].count(0) > 25:
         return data.decode("utf-16-le", errors="replace")
     return data.decode("utf-8-sig", errors="replace")
+
+
+def text_file(path):
+    return decode_log(path.read_bytes())
 
 
 @contextmanager
@@ -136,20 +185,24 @@ def require_idle(path):
     if result.stderr:
         raise RuntimeError("Não foi possível consultar os processos do MT5")
     executables = [item.strip() for item in result.stdout.splitlines() if item.strip()]
-    if any(item == "?" or Path(item).resolve().parent == path for item in executables):
-        raise RuntimeError("MT5 ou MetaEditor dedicado já aberto, ou caminho do processo inacessível")
+    if "?" in executables:
+        raise RuntimeError("Não foi possível identificar o caminho de um processo do MT5.")
+    if any(Path(item).resolve().parent == path for item in executables):
+        raise RetryableRun("MT5 ou MetaEditor dedicado ainda aberto.")
 
 
 def require_clean_source():
     paths = ["MQL5/Experts/" + EA.name, "MQL5/Profiles/Tester/" + PRESET.name]
-    git = ["git", "-C", str(REPO)]
+    git = ["git", "--no-optional-locks", "-C", str(REPO)]
+    revision = subprocess.check_output(git + ["rev-parse", "--verify", "HEAD"], text=True, timeout=GIT_TIMEOUT).strip()
     result = subprocess.run(
-        git + ["status", "--porcelain", "--"] + paths,
-        capture_output=True, text=True, check=True, timeout=15,
+        git + ["diff", "--quiet", "--no-ext-diff", revision, "--"] + paths,
+        capture_output=True, timeout=GIT_TIMEOUT,
     )
-    if result.stdout.strip():
+    if result.returncode == 1:
         raise RuntimeError("Fonte ou preset com alterações locais. Registre a revisão primeiro.")
-    return subprocess.check_output(git + ["rev-parse", "HEAD"], text=True, timeout=15).strip()
+    result.check_returncode()
+    return revision
 
 
 def digest(path):
@@ -170,7 +223,7 @@ def compile_ea(mt5, run, name, meta, probe=False):
         str(mt5 / "metaeditor64.exe"), "/portable",
         f"/compile:{source}", f"/log:{log}",
     ]
-    result = subprocess.run(command, cwd=mt5, timeout=300)
+    result = subprocess.run(command, cwd=mt5, timeout=COMPILE_TIMEOUT)
     meta["metaeditor_exit"] = result.returncode
     binary = source.with_suffix(".ex5")
     if not log.is_file() or not binary.is_file() or not binary.stat().st_size:
@@ -214,14 +267,18 @@ def execute(mt5, run, meta):
     job = meta["task"]
     name = f"alien_{uuid4().hex}"
     meta["tester_run"] = name
+    meta["stage"] = "process_check"
     require_idle(mt5)
+    meta["stage"] = "git"
     meta["revision"] = require_clean_source()
+    meta["stage"] = "compile"
     meta["sha256_source"] = digest(EA)
     meta["sha256_repository_preset"] = digest(PRESET)
     if job["mode"] in ("local", REMOTE_SWEEP):
         compile_ea(mt5, run, name, meta)
     else:
         compile_probe(mt5, run, name, meta)
+    meta["stage"] = "config"
     preset = prepare_preset(mt5, name, job["mode"])
     meta["sha256_tester_preset"] = digest(preset)
     demo = check_terminal(mt5)
@@ -229,24 +286,27 @@ def execute(mt5, run, meta):
     settings = tester_ini(job, name, preset.name)
     (run / "tester.ini").write_text(common + "\n" + settings, encoding="ascii")
     private_settings = run / "terminal-start.ini"
-    private_settings.write_text(common + f"Login={demo['login']}\n\n" + settings, encoding="ascii")
     report_dir = mt5 / "alien-executor-reports" / name
     report_dir.mkdir(parents=True)
+    meta["stage"] = "process_check"
     require_idle(mt5)
     tester_logs = mt5 / "Tester/logs"
-    offsets = {p.name: p.stat().st_size for p in tester_logs.glob("*.log")}
+    offsets = journal_offsets(tester_logs)
+    meta["stage"] = "tester"
     try:
-        result = subprocess.run(
-            [str(mt5 / "terminal64.exe"), "/portable", f"/config:{private_settings}"],
-            cwd=mt5, timeout=3600,
-        )
+        private_settings.write_text(common + f"Login={demo['login']}\n\n" + settings, encoding="ascii")
+        meta["terminal_exit"] = monitor_terminal(mt5, private_settings, demo["server"], job["symbol"], tester_logs, offsets, meta)
     finally:
         private_settings.unlink(missing_ok=True)
         collect_journal(tester_logs, offsets, run)
-    meta["terminal_exit"] = result.returncode
+    meta["stage"] = "report"
+    if meta.get("history_transient"):
+        journal = "\n".join(text_file(path) for path in run.glob("journal-*.log"))
+        if re.search(r"no history data|test(?:ing)? [^\n]*stop", journal, re.I):
+            raise RetryableRun("Download ou conexão de histórico interrompido.")
     suffix = ".htm" if job["mode"] == "local" else ".xml"
     report = report_dir / ("report" + suffix)
-    if result.returncode or not report.is_file() or not report.stat().st_size:
+    if meta["terminal_exit"] or not report.is_file() or not report.stat().st_size:
         raise RuntimeError("MT5 não produziu o relatório esperado com saída bem-sucedida")
     for path in report_dir.iterdir():
         if path.is_file() and path.suffix.lower() in {suffix, ".png", ".gif"}:
@@ -286,28 +346,176 @@ def validate_backtest_report(report, job, name, meta):
         verify_real_ticks(report.parent, meta)
     metrics["report_file"] = report.name
     metrics["strategy"] = EA.stem
-    metrics["exp_id"] = report.parent.name
+    metrics["exp_id"] = meta["id"]
     save(report.parent / "summary.json", metrics)
 
 
 def verify_real_ticks(run, meta):
     journal = "\n".join(text_file(path) for path in sorted(run.glob("journal-*.log")))
-    fallback = re.search(
-        r"no real ticks[^\n]*tick generation used|"
-        r"real ticks (?:discarded|missing) for [1-9][0-9]* minute|"
-        r"real ticks unavailable[^\n]*generat",
-        journal, re.I,
-    )
-    confirmed = re.search(
-        r"real ticks begin from|real ticks synchronization completed|"
-        r"generat(?:ing|ed) based on real ticks|using real ticks",
-        journal, re.I,
-    )
+    quality = re.search(r"(\d+(?:[.,]\d+)?)\s*%", meta.get("history_quality", ""))
+    partial = quality and float(quality[1].replace(",", ".")) < 100
+    fallback = partial or meta.get("tick_fallback_seen") or FALLBACK.search(journal)
+    confirmed = meta.get("real_ticks_seen") or REAL_TICKS.search(journal)
     meta["real_ticks_confirmed"] = bool(confirmed and not fallback)
     if fallback:
         raise InvalidBacktestReport("O MT5 substituiu ticks reais por geração de ticks.")
     if not confirmed:
         raise InvalidBacktestReport("O diário do MT5 não confirma uso de ticks reais.")
+
+
+class RetryableRun(RuntimeError):
+    """Erro transitório conhecido, com orçamento limitado de retentativas."""
+
+
+def journal_offsets(directory):
+    return journal_offsets_for(directory, "*.log")
+
+
+def read_journal_updates(directory, offsets):
+    parts = []
+    for name, size in journal_offsets(directory).items():
+        offset = offsets.get(name, 0)
+        offsets[name] = size
+        if size < offset:
+            offset = 0
+        if size == offset:
+            continue
+        try:
+            with (directory / name).open("rb") as stream:
+                stream.seek(max(offset, size - 500_000))
+                raw = stream.read(500_000)
+            parts.append(decode_log(raw))
+        except OSError:
+            offsets[name] = offset
+    return "\n".join(parts)
+
+
+def history_sizes(mt5, server, symbol):
+    state = {}
+    for root in (mt5 / "bases", mt5 / "Tester/bases"):
+        for directory, extension in (("ticks", "*.tkc"), ("history", "*.hcc")):
+            path = root / server / directory / symbol
+            for name, size in journal_offsets_for(path, extension).items():
+                state[str(path / name)] = size
+    return state
+
+
+def journal_offsets_for(directory, pattern):
+    sizes = {}
+    for path in directory.glob(pattern):
+        try:
+            sizes[path.name] = path.stat().st_size
+        except OSError:
+            continue
+    return sizes
+
+
+def terminal_cpu(mt5, pid):
+    query = (
+        "Get-Process terminal64,metatester64 -ErrorAction SilentlyContinue "
+        "| ForEach-Object { if ($_.Path -and $null -ne $_.CPU) "
+        "{ '{0}|{1}|{2}' -f $_.Id,$_.CPU.ToString([Globalization.CultureInfo]::InvariantCulture),$_.Path } }"
+    )
+    try:
+        sample = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    result = {}
+    for line in sample.stdout.splitlines():
+        fields = line.split("|", 2)
+        if len(fields) != 3 or not fields[0].isdigit():
+            continue
+        process_id, seconds, path = fields
+        if int(process_id) == pid or Path(path).parent == mt5:
+            try:
+                result[process_id] = float(seconds)
+            except ValueError:
+                continue
+    return result
+
+
+def observe_journal(chunk, phase, meta):
+    previous = phase
+    progress = False
+    for line in chunk.splitlines():
+        if HISTORY_START.search(line):
+            phase, progress = "history", True
+        elif SIMULATION_START.search(line):
+            phase, progress = "simulation", True
+        elif HISTORY_DONE.search(line):
+            if phase == "history":
+                phase = "initialization"
+            progress = True
+        if phase != previous:
+            meta["phase_changes"].append({"utc": utc(), "phase": phase})
+            previous = phase
+    meta["history_transient"] = bool(meta.get("history_transient") or TRANSIENT_HISTORY.search(chunk))
+    meta["real_ticks_seen"] = bool(meta.get("real_ticks_seen") or REAL_TICKS.search(chunk))
+    meta["tick_fallback_seen"] = bool(meta.get("tick_fallback_seen") or FALLBACK.search(chunk))
+    return phase, progress
+
+
+def terminal_deadline(phase, started, last_progress, now):
+    if now - started >= TERMINAL_TIMEOUT:
+        return "limite total do MT5"
+    if now - last_progress >= IDLE_LIMITS[phase]:
+        return {
+            "initialization": "inicialização sem atividade observável",
+            "history": "histórico sem crescimento ou eventos de progresso",
+            "simulation": "simulação sem atividade observável",
+        }[phase]
+    return None
+
+
+def monitor_terminal(mt5, config, server, symbol, tester_logs, offsets, meta):
+    command = [str(mt5 / "terminal64.exe"), "/portable", f"/config:{config}"]
+    cursors = offsets.copy()
+    cached = history_sizes(mt5, server, symbol)
+    phase = "initialization"
+    started = last_progress = next_cpu = time.monotonic()
+    cpu = {}
+    meta["phase_changes"] = [{"utc": utc(), "phase": phase}]
+    meta["history_growth_samples"] = meta["cpu_progress_samples"] = 0
+    with subprocess.Popen(command, cwd=mt5) as process:
+        try:
+            while True:
+                try:
+                    code = process.wait(timeout=POLL_SECONDS)
+                except subprocess.TimeoutExpired:
+                    code = None
+                chunk = read_journal_updates(tester_logs, cursors)
+                phase, progress = observe_journal(chunk, phase, meta)
+                now = time.monotonic()
+                if code is not None:
+                    return code
+                sizes = history_sizes(mt5, server, symbol)
+                if any(size > cached.get(path, 0) for path, size in sizes.items()):
+                    meta["history_growth_samples"] += 1
+                    progress = True
+                    if phase == "initialization":
+                        phase, _ = observe_journal("preliminary downloading of history ticks started", phase, meta)
+                cached = sizes
+                if phase == "simulation" and now >= next_cpu:
+                    sample = terminal_cpu(mt5, process.pid)
+                    if any(seconds - cpu.get(pid, seconds) >= 1 for pid, seconds in sample.items()):
+                        meta["cpu_progress_samples"] += 1
+                        progress = True
+                    cpu = sample
+                    next_cpu = now + 60
+                if progress:
+                    last_progress = now
+                reason = terminal_deadline(phase, started, last_progress, now)
+                if reason:
+                    raise RetryableRun(reason)
+        finally:
+            meta["terminal_phase"] = phase
+            meta["terminal_seconds"] = round(time.monotonic() - started, 2)
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=30)
 
 
 def collect_journal(directory, offsets, run):
@@ -382,6 +590,7 @@ def publish(run, outbox):
         for path in sorted(run.iterdir()):
             if path.is_file() and (
                 path.name in {"tester.ini", "result.json", "summary.json"}
+                or re.fullmatch(r"diagnostico-(?:tarefa|[0-9]{2})\.txt", path.name)
                 or path.suffix.lower() in {".htm", ".xml", ".png", ".gif"}
             ):
                 bundle.write(path, path.name)
@@ -394,8 +603,11 @@ def process(state, inbox, outbox, mt5):
             continue
         result = load(run / "result.json")
         if result["status"] == "running":
-            result.update(status="interrupted", finished=utc())
-            save(run / "result.json", result)
+            if "task" in result:
+                run_job(mt5, run, result["task"], result)
+            else:
+                result.update(status="interrupted", finished=utc())
+                save(run / "result.json", result)
         publish(run, outbox)
     tasks = sorted(inbox.glob("*.json"))
     for path in tasks:
@@ -414,18 +626,107 @@ def process(state, inbox, outbox, mt5):
         publish(run, outbox)
 
 
-def run_job(mt5, run, data):
-    meta = {"id": run.name, "status": "running", "started": utc()}
-    save(run / "result.json", meta)
+RUN_ERRORS = (OSError, ValueError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError)
+
+
+def retryable(error):
+    return isinstance(error, (RetryableRun, subprocess.TimeoutExpired)) or (
+        isinstance(error, OSError) and getattr(error, "winerror", None) in (32, 33, 121)
+    )
+
+
+def failure_summary(error):
+    if isinstance(error, subprocess.TimeoutExpired):
+        return f"Subprocesso excedeu {error.timeout} s."
+    if isinstance(error, (RetryableRun, InvalidBacktestReport)):
+        return str(error)
+    if isinstance(error, subprocess.CalledProcessError):
+        return f"Subprocesso encerrou com código {error.returncode}."
+    if isinstance(error, OSError):
+        return f"Falha de I/O (errno={error.errno}, winerror={getattr(error, 'winerror', None)})."
+    return "A etapa falhou. Consulte o diagnóstico da tentativa e o log local."
+
+
+def write_diagnostics(path, attempt_dir, attempt, error=None):
+    lines = [f"Etapa: {attempt.get('stage', 'validation')}", f"Estado: {attempt['status']}"]
+    if attempt.get("terminal_phase"):
+        lines.append(f"Fase do MT5: {attempt['terminal_phase']}")
+    if error is not None:
+        lines.append(f"{type(error).__name__}: {failure_summary(error)}")
+    if attempt_dir is not None:
+        for log in sorted(attempt_dir.glob("journal-*.log")):
+            for line in text_file(log).splitlines():
+                timestamp = re.search(r"\b\d{2}:\d{2}:\d{2}(?:\.\d{3})?\b", line)
+                for event in SAFE_JOURNAL_EVENT.finditer(line):
+                    lines.append(f"{timestamp[0] if timestamp else ''} {event[0]}".strip())
+        compile_log = attempt_dir / "compile.log"
+        if compile_log.is_file():
+            for line in text_file(compile_log).splitlines():
+                result = re.search(r"(?:Result|Resultado)\s*:\s*\d+\s+(?:errors?|erros?),\s*\d+\s+(?:warnings?|avisos?)", line, re.I)
+                if result:
+                    lines.append(result[0])
+    path.write_text("\n".join(lines[:4] + lines[4:][-100:]) + "\n", encoding="utf-8")
+
+
+def run_job(mt5, run, data, meta=None):
+    manifest = run / "result.json"
+    meta = meta or {"id": run.name, "status": "running", "started": utc(), "attempts": []}
     try:
         meta["task"] = parse_job(data)
-        execute(mt5, run, meta)
-        meta["status"] = "completed"
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError) as error:
-        (run / "error.log").write_text(str(error), encoding="utf-8")
-        meta.update(status="failed", error_type=type(error).__name__)
+    except ValueError as error:
+        meta.update(status="failed", stage="validation", error_type=type(error).__name__, finished=utc())
+        write_diagnostics(run / "diagnostico-tarefa.txt", None, meta, error)
+        save(manifest, meta)
+        return
+    attempts = meta.setdefault("attempts", [])
+    if attempts and attempts[-1]["status"] == "running":
+        interrupted = attempts[-1]
+        interrupted.update(status="interrupted", finished=utc())
+        index = interrupted["attempt"]
+        write_diagnostics(run / f"diagnostico-{index:02d}.txt", run / f"attempt-{index:02d}", interrupted)
+    start_attempt = len(attempts) + 1
+    if attempts and attempts[-1]["status"] != "interrupted" and not attempts[-1].get("retryable"):
+        start_attempt = ATTEMPT_LIMIT + 1
+    for index in range(start_attempt, ATTEMPT_LIMIT + 1):
+        attempt_dir = run / f"attempt-{index:02d}"
+        attempt_dir.mkdir(exist_ok=True)
+        attempt = {
+            "id": run.name, "task": meta["task"], "stage": "initialization",
+            "attempt": index, "status": "running", "started": utc(),
+        }
+        attempts.append(attempt)
+        save(manifest, meta)
+        try:
+            execute(mt5, attempt_dir, attempt)
+        except RUN_ERRORS as error:
+            (attempt_dir / "error.log").write_text(str(error), encoding="utf-8")
+            attempt.update(
+                status="failed", error_type=type(error).__name__,
+                failure_reason=failure_summary(error), retryable=retryable(error),
+            )
+            write_diagnostics(run / f"diagnostico-{index:02d}.txt", attempt_dir, attempt, error)
+        else:
+            attempt["status"] = "completed"
+        attempt["finished"] = utc()
+        save(manifest, meta)
+        if attempt["status"] == "completed" or not attempt.get("retryable") or index == ATTEMPT_LIMIT:
+            break
+        time.sleep(RETRY_DELAY)
+    last = attempts[-1]
+    for key, value in last.items():
+        if key not in {"attempt", "started", "finished"}:
+            meta[key] = value
+    if last["status"] == "interrupted":
+        meta.update(status="failed", error_type="InterruptionLimit", failure_reason="Orçamento de tentativas esgotado.")
+        write_diagnostics(run / "diagnostico-tarefa.txt", None, meta)
+    last_dir = run / f"attempt-{last['attempt']:02d}"
+    for path in last_dir.iterdir():
+        if path.is_file() and (
+            path.name in {"summary.json", "tester.ini"} or path.suffix.lower() in {".htm", ".xml", ".png", ".gif"}
+        ):
+            shutil.copyfile(path, run / path.name)
     meta["finished"] = utc()
-    save(run / "result.json", meta)
+    save(manifest, meta)
 
 
 def supervised(mt5, state, task_id):
@@ -442,13 +743,9 @@ def supervised(mt5, state, task_id):
         run = runs / task_id
         run.mkdir(exist_ok=True)
         manifest = run / "result.json"
-        if manifest.is_file():
-            meta = load(manifest)
-            if meta["status"] == "running":
-                meta.update(status="interrupted", finished=utc())
-                save(manifest, meta)
-        else:
-            run_job(mt5, run, data)
+        meta = load(manifest) if manifest.is_file() else None
+        if meta is None or meta["status"] == "running":
+            run_job(mt5, run, data, meta)
         publish(run, bundles)
 
 

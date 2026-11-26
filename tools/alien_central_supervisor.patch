@@ -22,8 +22,8 @@
          rows = self.conn.execute("SELECT * FROM tasks WHERE status='processing'").fetchall()
          for row in rows:
 -            if row["action"] in AI_ACTIONS:
-+            if row["action"] == QUANT_ACTION:
-+                self.stage_result(row, error="Backtest interrompido. Confira os logs locais e use um novo ID.")
++            if row["action"] == QUANT_ACTION and row["attempts"] >= 2:
++                self.stage_result(row, error="Backtest interrompido após a retomada automática.")
 +            elif row["action"] in AI_ACTIONS:
                  error = "Execu??o de IA interrompida; reenvie com novo ID se necess?rio."
                  self.stage_result(row, error=error)
@@ -59,7 +59,7 @@
 +            subprocess.run(
 +                [sys.executable, "-I", str(runner), "supervised", "--mt5", str(mt5),
 +                 "--state", str(state), "--task-id", task_id],
-+                input=payload_json, text=True, cwd=checkout, timeout=4000,
++                input=payload_json, text=True, cwd=checkout, timeout=13 * 3600,
 +                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
 +            )
 +        except (OSError, subprocess.SubprocessError):
@@ -78,17 +78,19 @@
          if action == "diagnose":
              return {"summary": "Diagnostico somente leitura concluido.", "findings": [self.diagnose()], "evidence": [], "uncertainties": [], "errors": []}
          if action == "collect":
-@@ -604,6 +640,9 @@
+@@ -604,6 +640,11 @@
          raise RuntimeError(f"Acao nao implementada: {action}")
  
      def stage_result(self, row: sqlite3.Row, result: Optional[dict] = None, error: Optional[str] = None) -> None:
 +        if (result is not None and row["action"] == QUANT_ACTION
 +                and result["manifest"]["status"] != "completed"):
-+            error = "O Strategy Tester não concluiu a tarefa. Consulte o manifesto e o log local."
++            manifest = result["manifest"]
++            reason = manifest.get("failure_reason", "Consulte o diagnóstico no ZIP.")
++            error = f"Backtest falhou na etapa {manifest.get('stage', 'indefinida')}. {reason}"
          response = {
              "schema": "alien.result/v1",
              "task_id": row["task_id"],
-@@ -615,7 +654,10 @@
+@@ -615,7 +656,10 @@
              "summary": result.get("summary", "Tarefa conclu?da.") if result is not None else "A tarefa terminou com erro.",
              "result": result or {},
              "input_sha256": row["sha256"],
@@ -100,7 +102,7 @@
              "errors": [{"message": error}] if error is not None else result.get("errors", []),
          }
          with self.conn:
-@@ -630,6 +672,17 @@
+@@ -630,6 +674,17 @@
              raise ValueError("Identificador inv?lido no banco.")
          response = json.loads(row["result_json"])
          result_path = self.resultados / task_id / "RESULTADO.json"
