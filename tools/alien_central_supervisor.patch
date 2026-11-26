@@ -8,6 +8,15 @@
  AI_ACTIONS = {"analyze_existing_report", "summarize"}
  ACTIONS = AI_ACTIONS | {"diagnose", "collect"}
  SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+@@ -41,7 +42,7 @@
+ 
+ def atomic_bytes(path: Path, content: bytes) -> None:
+     path.parent.mkdir(parents=True, exist_ok=True)
+-    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
++    temporary = path.with_name(f".alien-{uuid.uuid4().hex}.tmp")
+     try:
+         temporary.write_bytes(content)
+         os.replace(temporary, path)
 @@ -246,7 +247,9 @@
      def recover_interrupted_tasks(self) -> int:
          rows = self.conn.execute("SELECT * FROM tasks WHERE status='processing'").fetchall()
