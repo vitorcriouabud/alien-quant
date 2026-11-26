@@ -80,6 +80,8 @@ def text_file(path):
     data = path.read_bytes()
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return data.decode("utf-16", errors="replace")
+    if data[:100].count(0) > 25:
+        return data.decode("utf-16-le", errors="replace")
     return data.decode("utf-8-sig", errors="replace")
 
 
@@ -252,10 +254,32 @@ def validate_backtest_report(report, job, name, meta):
     if not any(key in pairs for key in ("total trades", "total de negociacoes", "total de negocios")):
         raise InvalidBacktestReport("Relatório sem contagem de negociações.")
     meta["history_quality"] = unescape(pairs.get("history quality") or pairs.get("qualidade do historico") or "")
+    if job.get("model") == 4:
+        verify_real_ticks(report.parent, meta)
     metrics["report_file"] = report.name
     metrics["strategy"] = EA.stem
     metrics["exp_id"] = report.parent.name
     save(report.parent / "summary.json", metrics)
+
+
+def verify_real_ticks(run, meta):
+    journal = "\n".join(text_file(path) for path in sorted(run.glob("journal-*.log")))
+    fallback = re.search(
+        r"no real ticks[^\n]*tick generation used|"
+        r"real ticks (?:discarded|missing) for [1-9][0-9]* minute|"
+        r"real ticks unavailable[^\n]*generat",
+        journal, re.I,
+    )
+    confirmed = re.search(
+        r"real ticks begin from|real ticks synchronization completed|"
+        r"generat(?:ing|ed) based on real ticks|using real ticks",
+        journal, re.I,
+    )
+    meta["real_ticks_confirmed"] = bool(confirmed and not fallback)
+    if fallback:
+        raise InvalidBacktestReport("O MT5 substituiu ticks reais por geração de ticks.")
+    if not confirmed:
+        raise InvalidBacktestReport("O diário do MT5 não confirma uso de ticks reais.")
 
 
 def collect_journal(directory, offsets, run):
