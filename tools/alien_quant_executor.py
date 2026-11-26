@@ -13,6 +13,7 @@ import sys
 import time
 from uuid import uuid4
 from zipfile import ZIP_DEFLATED, ZipFile
+from xml.etree import ElementTree
 
 REPO = Path(__file__).resolve().parents[1]
 EA = REPO / "MQL5/Experts/ALIEN_V12_1_INSTITUTIONAL.mq5"
@@ -59,12 +60,12 @@ def tester_ini(job, name, parameters):
     mode = job["mode"]
     optimization = int(mode != "local")
     return (
-        "[Experts]\nEnabled=0\nAllowLiveTrading=0\nAllowDllImport=0\n\n"
+        "[Experts]\nEnabled=1\nAllowLiveTrading=0\nAllowDllImport=0\n\n"
         "[Tester]\n"
         f"Expert=ALIEN_Executor\\{name}.ex5\nExpertParameters={parameters}\n"
         f"Symbol={job['symbol']}\nPeriod=M1\nModel={job['model']}\n"
         f"FromDate={job['from']}\nToDate={job['to']}\n"
-        f"Optimization={optimization}\nOptimizationCriterion=0\n"
+        f"Optimization={optimization}\nOptimizationCriterion=6\n"
         "ForwardMode=0\nExecutionMode=0\nVisual=0\n"
         "Deposit=10000\nCurrency=USD\nLeverage=1:100\n"
         f"UseLocal={int(mode != 'remote-passes')}\n"
@@ -190,10 +191,15 @@ def execute(mt5, run, meta):
     report_dir = mt5 / "alien-executor-reports" / name
     report_dir.mkdir(parents=True)
     require_idle(mt5)
-    result = subprocess.run(
-        [str(mt5 / "terminal64.exe"), "/portable", f"/config:{settings}"],
-        cwd=mt5, timeout=3600,
-    )
+    tester_logs = mt5 / "Tester/logs"
+    offsets = {p.name: p.stat().st_size for p in tester_logs.glob("*.log")}
+    try:
+        result = subprocess.run(
+            [str(mt5 / "terminal64.exe"), "/portable", f"/config:{settings}"],
+            cwd=mt5, timeout=3600,
+        )
+    finally:
+        collect_journal(tester_logs, offsets, run)
     meta["terminal_exit"] = result.returncode
     suffix = ".htm" if job["mode"] == "local" else ".xml"
     report = report_dir / ("report" + suffix)
@@ -203,6 +209,8 @@ def execute(mt5, run, meta):
         if path.is_file() and path.suffix.lower() in {suffix, ".png", ".gif"}:
             shutil.copyfile(path, run / path.name)
     meta["sha256_report"] = digest(report)
+    if suffix == ".xml":
+        validate_probe_report(report, meta)
     if suffix == ".htm":
         result = subprocess.run(
             [sys.executable, str(REPO / "tools/parse_and_record_results.py"),
@@ -214,6 +222,40 @@ def execute(mt5, run, meta):
             save(run / "summary.json", json.loads(result.stdout))
         except (ValueError, subprocess.CalledProcessError):
             meta["warning"] = "Falha ao extrair métricas. Consulte o relatório original."
+
+
+def collect_journal(directory, offsets, run):
+    for path in directory.glob("*.log"):
+        try:
+            with path.open("rb") as stream:
+                size = stream.seek(0, 2)
+                start = min(offsets.get(path.name, 0), size)
+                if start == size:
+                    continue
+                stream.seek(max(start, size - 2_000_000))
+                (run / ("journal-" + path.name)).write_bytes(stream.read(2_000_000))
+        except OSError:
+            continue
+
+
+def validate_probe_report(report, meta):
+    tree = ElementTree.parse(report)
+    namespace = {"s": "urn:schemas-microsoft-com:office:spreadsheet"}
+    rows = tree.findall(".//s:Table/s:Row", namespace)
+    for index, row in enumerate(rows):
+        labels = [cell.text for cell in row.findall("s:Cell/s:Data", namespace)]
+        if "Probe" in labels:
+            column = labels.index("Probe")
+            values = set()
+            for item in rows[index + 1:]:
+                cells = item.findall("s:Cell/s:Data", namespace)
+                if len(cells) > column and cells[column].text is not None:
+                    values.add(float(cells[column].text))
+            meta["probe_values"] = sorted(values)
+            if values == set(range(9)):
+                return
+            break
+    raise ValueError("XML não confirma os nove passes de diagnóstico")
 
 
 PROBE = """#property strict
@@ -236,7 +278,7 @@ def publish(run, outbox):
     tmp = outbox / f".{run.name}.{uuid4().hex}.tmp"
     with ZipFile(tmp, "w", ZIP_DEFLATED) as bundle:
         for path in sorted(run.iterdir()):
-            if path.is_file() and path.name not in {"compile.log", "error.log"}:
+            if path.is_file() and path.suffix != ".log":
                 bundle.write(path, path.name)
     tmp.replace(final)
 
@@ -269,7 +311,7 @@ def process(state, inbox, outbox, mt5):
             meta["task"] = parse_job(data)
             execute(mt5, run, meta)
             meta["status"] = "completed"
-        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError) as error:
             # Caminhos locais e linhas de comando permanecem no log local.
             (run / "error.log").write_text(str(error), encoding="utf-8")
             meta.update(status="failed", error_type=type(error).__name__)
