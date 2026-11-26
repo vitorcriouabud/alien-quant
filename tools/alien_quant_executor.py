@@ -3,9 +3,11 @@ import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
+from html import unescape
 import json
 from pathlib import Path
 import re
+from runpy import run_path
 import shutil
 import socket
 import subprocess
@@ -225,16 +227,35 @@ def execute(mt5, run, meta):
     if suffix == ".xml":
         validate_probe_report(report, meta)
     if suffix == ".htm":
-        result = subprocess.run(
-            [sys.executable, str(REPO / "tools/parse_and_record_results.py"),
-             "--report", str(run / report.name), "--json"],
-            timeout=60, capture_output=True, text=True,
-        )
-        try:
-            result.check_returncode()
-            save(run / "summary.json", json.loads(result.stdout))
-        except (ValueError, subprocess.CalledProcessError):
-            meta["warning"] = "Falha ao extrair métricas. Consulte o relatório original."
+        validate_backtest_report(run / report.name, job, name, meta)
+
+
+class InvalidBacktestReport(ValueError):
+    """O HTML existe, mas não comprova uma simulação válida."""
+
+
+def validate_backtest_report(report, job, name, meta):
+    parser = run_path(str(REPO / "tools/parse_and_record_results.py"))
+    pairs = parser["parse_report_html"](parser["read_report_file"](str(report)))
+    bars = parser["clean_number"](unescape(pairs.get("bars") or pairs.get("barras") or ""))
+    ticks = parser["clean_number"](unescape(pairs.get("ticks") or ""))
+    meta["bars"] = bars
+    meta["ticks"] = ticks
+    if bars <= 0 or ticks <= 0:
+        raise InvalidBacktestReport("Relatório sem barras ou ticks históricos.")
+    metrics = parser["extract_metrics"](pairs, report)
+    date_range = metrics.get("period", "")
+    if (metrics.get("symbol") != job["symbol"] or metrics.get("timeframe") != "M1"
+            or job["from"] not in date_range or job["to"] not in date_range
+            or not any(name in value for key, value in pairs.items() if key.startswith("expert"))):
+        raise InvalidBacktestReport("Expert, símbolo ou intervalo divergente no relatório do MT5.")
+    if not any(key in pairs for key in ("total trades", "total de negociacoes", "total de negocios")):
+        raise InvalidBacktestReport("Relatório sem contagem de negociações.")
+    meta["history_quality"] = unescape(pairs.get("history quality") or pairs.get("qualidade do historico") or "")
+    metrics["report_file"] = report.name
+    metrics["strategy"] = EA.stem
+    metrics["exp_id"] = report.parent.name
+    save(report.parent / "summary.json", metrics)
 
 
 def collect_journal(directory, offsets, run):
