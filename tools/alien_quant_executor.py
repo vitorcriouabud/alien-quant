@@ -21,6 +21,9 @@ REPO = Path(__file__).resolve().parents[1]
 EA = REPO / "MQL5/Experts/ALIEN_V12_1_INSTITUTIONAL.mq5"
 PRESET = REPO / "MQL5/Profiles/Tester/ALIEN_V12_1_INSTITUTIONAL.set"
 MARKER = ".alien-tester-only"
+REMOTE_SWEEP = "remote-spread-sweep"
+SPREAD_VALUES = {20, 25, 30}
+SPREAD_PARAMETER = "AbsoluteMaxSpreadPts"
 NODES = ("192.168.3.47:2000", "192.168.3.47:2001")
 
 
@@ -42,7 +45,7 @@ def parse_job(data):
     keys = {"from", "to", "mode", "symbol", "model"}
     if not isinstance(data, dict) or set(data) != keys:
         raise ValueError("Campos esperados: from, to, mode, symbol, model")
-    if data["mode"] not in ("local", "local-passes", "remote-passes", "mixed-passes"):
+    if data["mode"] not in ("local", "local-passes", "remote-passes", "mixed-passes", REMOTE_SWEEP):
         raise ValueError("Modo inválido")
     if not isinstance(data["symbol"], str) or not re.fullmatch(r"XAUUSD(?:[._-]?[A-Za-z0-9]{1,12})?", data["symbol"]):
         raise ValueError("Símbolo XAUUSD inválido")
@@ -55,23 +58,29 @@ def parse_job(data):
         dates.append(datetime.strptime(data[key], "%Y.%m.%d").date())
     if not 0 < (dates[1] - dates[0]).days <= 93:
         raise ValueError("Intervalo permitido de 1 a 93 dias")
+    if data["mode"] == REMOTE_SWEEP and (
+        data["model"] != 1 or (dates[1] - dates[0]).days > 3
+        or dates[1] >= datetime(2026, 11, 25).date()
+    ):
+        raise ValueError("Triagem de spread exige OHLC, até três dias e janela pré-reserva")
     return data
 
 
 def tester_ini(job, name, parameters):
     mode = job["mode"]
     optimization = int(mode != "local")
+    criterion = 0 if mode == REMOTE_SWEEP else 6
     return (
         "[Experts]\nEnabled=1\nAllowLiveTrading=0\nAllowDllImport=0\n\n"
         "[Tester]\n"
         f"Expert=ALIEN_Executor\\{name}.ex5\nExpertParameters={parameters}\n"
         f"Symbol={job['symbol']}\nPeriod=M1\nModel={job['model']}\n"
         f"FromDate={job['from']}\nToDate={job['to']}\n"
-        f"Optimization={optimization}\nOptimizationCriterion=6\n"
+        f"Optimization={optimization}\nOptimizationCriterion={criterion}\n"
         "ForwardMode=0\nExecutionMode=0\nVisual=0\n"
         "Deposit=10000\nCurrency=USD\nLeverage=1:100\n"
-        f"UseLocal={int(mode != 'remote-passes')}\n"
-        f"UseRemote={int(mode in ('remote-passes', 'mixed-passes'))}\nUseCloud=0\n"
+        f"UseLocal={int(mode not in ('remote-passes', REMOTE_SWEEP))}\n"
+        f"UseRemote={int(mode in ('remote-passes', 'mixed-passes', REMOTE_SWEEP))}\nUseCloud=0\n"
         f"Report=alien-executor-reports\\{name}\\report\nReplaceReport=0\nShutdownTerminal=1\n"
     )
 
@@ -177,6 +186,23 @@ def prepare_preset(mt5, name, mode):
     target = directory / f"{name}.set"
     if mode == "local":
         shutil.copyfile(PRESET, target)
+    elif mode == REMOTE_SWEEP:
+        raw = PRESET.read_bytes()
+        encoding = "utf-8"
+        if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+            encoding = "utf-16"
+        elif raw.startswith(b"\xef\xbb\xbf"):
+            encoding = "utf-8-sig"
+        preset = raw.decode(encoding)
+        preset = re.sub(r"\|\|Y(?=\r?$)", "||N", preset, flags=re.M)
+        preset, count = re.subn(
+            rf"(?m)^{SPREAD_PARAMETER}=[^\r\n]*",
+            f"{SPREAD_PARAMETER}=25||20||5||30||Y",
+            preset,
+        )
+        if count != 1:
+            raise ValueError("Preset não tem exatamente um filtro de spread identificável")
+        target.write_bytes(preset.encode(encoding))
     else:
         # Repete a estratégia com nove valores de um input de diagnóstico sem ordens.
         # O EA preserva todo o código do repositório para o backtest individual.
@@ -192,7 +218,7 @@ def execute(mt5, run, meta):
     meta["revision"] = require_clean_source()
     meta["sha256_source"] = digest(EA)
     meta["sha256_repository_preset"] = digest(PRESET)
-    if job["mode"] == "local":
+    if job["mode"] in ("local", REMOTE_SWEEP):
         compile_ea(mt5, run, name, meta)
     else:
         compile_probe(mt5, run, name, meta)
@@ -226,7 +252,9 @@ def execute(mt5, run, meta):
         if path.is_file() and path.suffix.lower() in {suffix, ".png", ".gif"}:
             shutil.copyfile(path, run / path.name)
     meta["sha256_report"] = digest(report)
-    if suffix == ".xml":
+    if job["mode"] == REMOTE_SWEEP:
+        validate_sweep_report(report, run, meta)
+    elif suffix == ".xml":
         validate_probe_report(report, meta)
     if suffix == ".htm":
         validate_backtest_report(run / report.name, job, name, meta)
@@ -296,24 +324,40 @@ def collect_journal(directory, offsets, run):
             continue
 
 
-def validate_probe_report(report, meta):
+def optimization_values(report, column_name):
     tree = ElementTree.parse(report)
     namespace = {"s": "urn:schemas-microsoft-com:office:spreadsheet"}
     rows = tree.findall(".//s:Table/s:Row", namespace)
     for index, row in enumerate(rows):
         labels = [cell.text for cell in row.findall("s:Cell/s:Data", namespace)]
-        if "Probe" in labels:
-            column = labels.index("Probe")
+        if column_name in labels:
+            column = labels.index(column_name)
             values = set()
             for item in rows[index + 1:]:
                 cells = item.findall("s:Cell/s:Data", namespace)
                 if len(cells) > column and cells[column].text is not None:
                     values.add(float(cells[column].text))
-            meta["probe_values"] = sorted(values)
-            if values == set(range(9)):
-                return
-            break
-    raise ValueError("XML não confirma os nove passes de diagnóstico")
+            return values
+    return set()
+
+
+def validate_probe_report(report, meta):
+    values = optimization_values(report, "Probe")
+    meta["probe_values"] = sorted(values)
+    if values != set(range(9)):
+        raise ValueError("XML não confirma os nove passes de diagnóstico")
+
+
+def validate_sweep_report(report, run, meta):
+    values = optimization_values(report, SPREAD_PARAMETER)
+    meta["sweep_values"] = sorted(values)
+    if values != SPREAD_VALUES:
+        raise ValueError("XML não confirma os três limites de spread previstos")
+    journal = "\n".join(text_file(path) for path in sorted(run.glob("journal-*.log")))
+    if not re.search(r"local 0 tasks[^\n]+remote 3 tasks[^\n]+cloud 0 tasks", journal, re.I):
+        raise ValueError("O diário não confirma que os três passes rodaram nos agentes remotos")
+    meta["remote_passes_confirmed"] = 3
+    meta["evidence_scope"] = "triagem_ohlc"
 
 
 PROBE = """#property strict
