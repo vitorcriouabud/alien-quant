@@ -11,7 +11,7 @@ Estado em 26/11/2026. A referência inicial é o commit 90cdaed30e82c4292120f90b
 
 ## Instalação e diagnóstico no Dell
 
-Use um clone separado na branch experimental. Identifique o diretório gravável do terminal portátil já usado para testes. Confirme que contém terminal64.exe e metaeditor64.exe, usa somente conta demo e que o histórico do XAUUSD está disponível. Crie nele um arquivo vazio chamado .alien-tester-only. Cadastre, na aba Agentes desse terminal, os dois endereços do Samsung em 192.168.3.47, portas 2000 e 2001. Insira a senha pelo MT5. Feche o terminal dedicado e o MetaEditor antes de iniciar o executor.
+Use um clone separado na branch experimental. Identifique o diretório gravável do terminal portátil já usado para testes. Confirme que contém terminal64.exe e metaeditor64.exe, usa somente conta demo e que o histórico do XAUUSD está disponível. Configure nele o marcador local .alien-tester-only conforme a seção de integração. Cadastre, na aba Agentes desse terminal, os dois endereços do Samsung em 192.168.3.47, portas 2000 e 2001. Insira a senha pelo MT5. Feche o terminal dedicado e o MetaEditor antes de iniciar o executor.
 
 No Drive para computador, identifique o caminho local da [pasta compartilhada](https://drive.google.com/drive/folders/1cl6OyyRZzEN3J6i-PG5JuQtzwkimCcEF). Use uma subpasta exclusiva para esta fila. Os caminhos abaixo são exemplos.
 
@@ -46,3 +46,20 @@ O modelo 1 usa OHLC M1 e o modelo 4 usa ticks reais. Escolha datas com históric
 5. Registre neste arquivo os IDs, horários, hashes, resultado de cada verificação e erros observados. Para evidência compartilhável dos agentes, extraia do diário somente as linhas que confirmam passes concluídos por agente e remova dados de conta antes de enviar.
 
 Referências do MT5. [Inicialização com configuração](https://www.metatrader5.com/en/terminal/help/start_advanced/start) · [Agentes e execução de passes](https://www.metatrader5.com/en/terminal/help/algotrading/testing_features)
+
+## Integração com ALIEN_CENTRAL
+
+Use a entrada e os resultados do supervisor existente. A operação integrada usa `supervised` internamente e não requer uma instância de `watch`.
+
+1. Guarde uma cópia de `supervisor.py`, aplique `tools/alien_central_supervisor.patch` na raiz de `ALIEN_CENTRAL` e valide o diff. O patch parte da revisão da Central de 25/11/2026.
+2. No computador que executará o supervisor, crie `quant_executor.json` em seu diretório de estado SQLite local com as chaves `checkout` e `installation`, apontando para o clone experimental e para o MT5 portátil DEMO. A ausência desse arquivo deixa a ação de backtest indisponível. O Python do supervisor deve ser 3.11+ e ter Git no PATH.
+3. No diretório portátil, configure `.alien-tester-only` como JSON com `server` (texto) e `login` (inteiro) de uma conta comprovadamente DEMO. Mantenha esse arquivo e a autenticação do MT5 no computador autorizado. O pacote leva somente a configuração sem número de conta.
+4. Reinicie a instância do supervisor que passará a usar esse ambiente após terminar a tarefa em curso. A fila compartilhada deve ter um único responsável. O modo de análise do Codex continua usando suas regras de aprovação próprias.
+
+Envie o envelope abaixo para `ENTRADA/pendentes/<id>.json`. Consulte `RESULTADOS/task_<id>/RESULTADO.json` e `EVIDENCIAS.zip` na pasta de resultado.
+
+```json
+{"schema":"alien.task/v1","id":"v121_xauusd_01","action":"quant_backtest","payload":{"from":"2026.11.24","to":"2026.11.25","mode":"local","symbol":"XAUUSD","model":4}}
+```
+
+O supervisor registra falhas no mesmo banco e reaproveita o pacote em tentativas de publicação. Confirme ticks reais e agentes pelo diário da execução. O código de saída e a existência do XML não identificam os agentes responsáveis.

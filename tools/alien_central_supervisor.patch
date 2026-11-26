@@ -1,0 +1,111 @@
+--- a/supervisor.py
++++ b/supervisor.py
+@@ -20,6 +20,7 @@
+ 
+ 
+ UTC = timezone.utc
++QUANT_ACTION = "quant_backtest"
+ AI_ACTIONS = {"analyze_existing_report", "summarize"}
+ ACTIONS = AI_ACTIONS | {"diagnose", "collect"}
+ SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
+@@ -246,7 +247,9 @@
+     def recover_interrupted_tasks(self) -> int:
+         rows = self.conn.execute("SELECT * FROM tasks WHERE status='processing'").fetchall()
+         for row in rows:
+-            if row["action"] in AI_ACTIONS:
++            if row["action"] == QUANT_ACTION:
++                self.stage_result(row, error="Backtest interrompido. Confira os logs locais e use um novo ID.")
++            elif row["action"] in AI_ACTIONS:
+                 error = "Execu??o de IA interrompida; reenvie com novo ID se necess?rio."
+                 self.stage_result(row, error=error)
+             else:
+@@ -290,7 +293,10 @@
+         if input_id is not None and (not isinstance(input_id, str) or not SAFE_ID.fullmatch(input_id)):
+             return None, "invalid_id", payload
+         action = self.normalize_action(payload)
+-        if action not in ACTIONS or action not in self.config["allowed_actions"]:
++        if action == QUANT_ACTION:
++            if not (self.local_state / "quant_executor.json").is_file():
++                return None, "quant_executor_not_configured", None
++        elif action not in ACTIONS or action not in self.config["allowed_actions"]:
+             return None, f"unsupported_action:{action or 'missing'}", payload
+         task_id = f"task_{input_id}" if input_id else f"task_{uuid.uuid5(uuid.NAMESPACE_URL, task_hash)}"
+ 
+@@ -592,7 +598,37 @@
+         }
+         return result
+ 
++    def quant_backtest(self, task_id: str, payload: dict) -> dict:
++        if payload.get("schema") != "alien.task/v1" or not isinstance(payload.get("payload"), dict):
++            raise ValueError("Envelope de backtest inválido.")
++        options = json.loads((self.local_state / "quant_executor.json").read_text(encoding="utf-8-sig"))
++        checkout = Path(options["checkout"]).resolve()
++        mt5 = Path(options["installation"]).resolve()
++        if checkout.is_relative_to(self.workspace) or mt5.is_relative_to(self.workspace):
++            raise ValueError("Checkout e MT5 portatil precisam ficar fora da pasta do Drive.")
++        runner = checkout / "tools" / "alien_quant_executor.py"
++        state = self.local_state / "quant"
++        payload_json = json.dumps(payload["payload"], ensure_ascii=True)
++        try:
++            subprocess.run(
++                [sys.executable, "-I", str(runner), "supervised", "--mt5", str(mt5),
++                 "--state", str(state), "--task-id", task_id],
++                input=payload_json, text=True, cwd=checkout, timeout=4000,
++                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
++            )
++        except (OSError, subprocess.SubprocessError):
++            raise RuntimeError("Executor quantitativo indisponível. Confira o ambiente local.") from None
++        manifest = json.loads((state / "runs" / task_id / "result.json").read_text(encoding="utf-8"))
++        bundle = state / "bundles" / f"{task_id}.zip"
++        return {
++            "summary": "Execução do Strategy Tester " + manifest["status"] + ".",
++            "manifest": manifest,
++            "bundle_sha256": sha256_file(bundle),
++        }
++
+     def process_task(self, task_id: str, payload: dict, action: str) -> dict:
++        if action == QUANT_ACTION:
++            return self.quant_backtest(task_id, payload)
+         if action == "diagnose":
+             return {"summary": "Diagnostico somente leitura concluido.", "findings": [self.diagnose()], "evidence": [], "uncertainties": [], "errors": []}
+         if action == "collect":
+@@ -604,6 +640,9 @@
+         raise RuntimeError(f"Acao nao implementada: {action}")
+ 
+     def stage_result(self, row: sqlite3.Row, result: Optional[dict] = None, error: Optional[str] = None) -> None:
++        if (result is not None and row["action"] == QUANT_ACTION
++                and result["manifest"]["status"] != "completed"):
++            error = "O Strategy Tester não concluiu a tarefa. Consulte o manifesto e o log local."
+         response = {
+             "schema": "alien.result/v1",
+             "task_id": row["task_id"],
+@@ -615,7 +654,10 @@
+             "summary": result.get("summary", "Tarefa conclu?da.") if result is not None else "A tarefa terminou com erro.",
+             "result": result or {},
+             "input_sha256": row["sha256"],
+-            "artifacts": [],
++            "artifacts": (
++                [{"file": "EVIDENCIAS.zip", "sha256": result["bundle_sha256"]}]
++                if result is not None and row["action"] == QUANT_ACTION else []
++            ),
+             "errors": [{"message": error}] if error is not None else result.get("errors", []),
+         }
+         with self.conn:
+@@ -630,6 +672,17 @@
+             raise ValueError("Identificador inv?lido no banco.")
+         response = json.loads(row["result_json"])
+         result_path = self.resultados / task_id / "RESULTADO.json"
++        if row["action"] == QUANT_ACTION and response["artifacts"]:
++            expected = response["artifacts"][0]["sha256"]
++            source = self.local_state / "quant" / "bundles" / f"{task_id}.zip"
++            target = result_path.with_name("EVIDENCIAS.zip")
++            if target.exists():
++                if sha256_file(target) != expected:
++                    raise FileExistsError("Evidência anterior preservada.")
++            else:
++                if sha256_file(source) != expected:
++                    raise ValueError("O pacote quantitativo diverge do SHA-256 registrado.")
++                atomic_bytes(target, source.read_bytes())
+         if result_path.exists():
+             existing = json.loads(result_path.read_text(encoding="utf-8-sig"))
+             if existing != response:

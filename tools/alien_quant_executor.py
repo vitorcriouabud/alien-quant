@@ -96,24 +96,32 @@ def locked(path):
 
 
 def check_terminal(path):
-    if not (path / MARKER).is_file():
-        raise RuntimeError("Identifique primeiro o MT5 portátil dedicado com .alien-tester-only")
+    try:
+        demo = load(path / MARKER)
+    except (OSError, ValueError) as error:
+        raise RuntimeError("Configure o arquivo local .alien-tester-only do MT5 portátil DEMO") from error
+    if (not isinstance(demo, dict) or set(demo) != {"server", "login"}
+            or not isinstance(demo["server"], str)
+            or not re.fullmatch(r"[A-Za-z0-9.-]{1,80}", demo["server"])
+            or type(demo["login"]) is not int or not 0 < demo["login"] < 2**63):
+        raise ValueError("Identificação local DEMO inválida")
     for name in ("terminal64.exe", "metaeditor64.exe"):
         if not (path / name).is_file():
             raise RuntimeError(f"Executável ausente no MT5 portátil: {name}")
+    return demo
 
 
 def require_idle(path):
     command = (
-        "Get-CimInstance Win32_Process -Filter "
-        "\"Name='terminal64.exe' OR Name='metaeditor64.exe'\" "
-        "| ForEach-Object { if ($_.ExecutablePath) { $_.ExecutablePath } else { '?' } }"
+        "Get-Process terminal64,metaeditor64 -ErrorAction SilentlyContinue "
+        "| ForEach-Object { if ($_.Path) { $_.Path } else { '?' } }"
     )
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-         "$ErrorActionPreference='Stop'; " + command],
-        check=True, capture_output=True, text=True, timeout=30,
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True, text=True, timeout=60,
     )
+    if result.stderr:
+        raise RuntimeError("Não foi possível consultar os processos do MT5")
     executables = [item.strip() for item in result.stdout.splitlines() if item.strip()]
     if any(item == "?" or Path(item).resolve().parent == path for item in executables):
         raise RuntimeError("MT5 ou MetaEditor dedicado já aberto, ou caminho do processo inacessível")
@@ -186,8 +194,12 @@ def execute(mt5, run, meta):
         compile_probe(mt5, run, name, meta)
     preset = prepare_preset(mt5, name, job["mode"])
     meta["sha256_tester_preset"] = digest(preset)
-    settings = run / "tester.ini"
-    settings.write_text(tester_ini(job, name, preset.name), encoding="ascii")
+    demo = check_terminal(mt5)
+    common = f"[Common]\nServer={demo['server']}\nNewsEnable=0\n"
+    settings = tester_ini(job, name, preset.name)
+    (run / "tester.ini").write_text(common + "\n" + settings, encoding="ascii")
+    private_settings = run / "terminal-start.ini"
+    private_settings.write_text(common + f"Login={demo['login']}\n\n" + settings, encoding="ascii")
     report_dir = mt5 / "alien-executor-reports" / name
     report_dir.mkdir(parents=True)
     require_idle(mt5)
@@ -195,10 +207,11 @@ def execute(mt5, run, meta):
     offsets = {p.name: p.stat().st_size for p in tester_logs.glob("*.log")}
     try:
         result = subprocess.run(
-            [str(mt5 / "terminal64.exe"), "/portable", f"/config:{settings}"],
+            [str(mt5 / "terminal64.exe"), "/portable", f"/config:{private_settings}"],
             cwd=mt5, timeout=3600,
         )
     finally:
+        private_settings.unlink(missing_ok=True)
         collect_journal(tester_logs, offsets, run)
     meta["terminal_exit"] = result.returncode
     suffix = ".htm" if job["mode"] == "local" else ".xml"
@@ -278,7 +291,10 @@ def publish(run, outbox):
     tmp = outbox / f".{run.name}.{uuid4().hex}.tmp"
     with ZipFile(tmp, "w", ZIP_DEFLATED) as bundle:
         for path in sorted(run.iterdir()):
-            if path.is_file() and path.suffix != ".log":
+            if path.is_file() and (
+                path.name in {"tester.ini", "result.json", "summary.json"}
+                or path.suffix.lower() in {".htm", ".xml", ".png", ".gif"}
+            ):
                 bundle.write(path, path.name)
     tmp.replace(final)
 
@@ -305,19 +321,46 @@ def process(state, inbox, outbox, mt5):
             # O cliente de sincronização pode ainda estar transferindo o arquivo.
             continue
         run.mkdir(exist_ok=True)
-        meta = {"id": run.name, "status": "running", "started": utc()}
-        save(run / "result.json", meta)
-        try:
-            meta["task"] = parse_job(data)
-            execute(mt5, run, meta)
-            meta["status"] = "completed"
-        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError) as error:
-            # Caminhos locais e linhas de comando permanecem no log local.
-            (run / "error.log").write_text(str(error), encoding="utf-8")
-            meta.update(status="failed", error_type=type(error).__name__)
-        meta["finished"] = utc()
-        save(run / "result.json", meta)
+        run_job(mt5, run, data)
         publish(run, outbox)
+
+
+def run_job(mt5, run, data):
+    meta = {"id": run.name, "status": "running", "started": utc()}
+    save(run / "result.json", meta)
+    try:
+        meta["task"] = parse_job(data)
+        execute(mt5, run, meta)
+        meta["status"] = "completed"
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, ElementTree.ParseError) as error:
+        (run / "error.log").write_text(str(error), encoding="utf-8")
+        meta.update(status="failed", error_type=type(error).__name__)
+    meta["finished"] = utc()
+    save(run / "result.json", meta)
+
+
+def supervised(mt5, state, task_id):
+    if not re.fullmatch(r"task_[a-zA-Z0-9_-]{1,80}", task_id or ""):
+        raise ValueError("ID de tarefa inválido")
+    if state.is_relative_to(mt5) or mt5.is_relative_to(state):
+        raise ValueError("Estado do supervisor e MT5 devem ser separados")
+    data = json.load(sys.stdin)
+    runs = state / "runs"
+    bundles = state / "bundles"
+    for folder in (runs, bundles):
+        folder.mkdir(parents=True, exist_ok=True)
+    with locked(mt5 / ".alien-executor.lock"):
+        run = runs / task_id
+        run.mkdir(exist_ok=True)
+        manifest = run / "result.json"
+        if manifest.is_file():
+            meta = load(manifest)
+            if meta["status"] == "running":
+                meta.update(status="interrupted", finished=utc())
+                save(manifest, meta)
+        else:
+            run_job(mt5, run, data)
+        publish(run, bundles)
 
 
 def diagnose(mt5, shared):
@@ -342,12 +385,22 @@ def diagnose(mt5, shared):
 
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
-    cli.add_argument("command", choices=("diagnose", "once", "watch"))
+    cli.add_argument("command", choices=("diagnose", "once", "watch", "supervised"))
     cli.add_argument("--mt5", type=Path, required=True)
-    cli.add_argument("--shared", type=Path, required=True)
+    cli.add_argument("--shared", type=Path)
+    cli.add_argument("--task-id")
     cli.add_argument("--state", type=Path)
     args = cli.parse_args()
-    mt5, shared = args.mt5.resolve(), args.shared.resolve()
+    mt5 = args.mt5.resolve()
+    if args.command == "supervised":
+        if args.state is None:
+            cli.error("--state é obrigatório no modo supervised")
+        check_terminal(mt5)
+        supervised(mt5, args.state.resolve(), args.task_id)
+        return
+    if args.shared is None:
+        cli.error("--shared é obrigatório")
+    shared = args.shared.resolve()
     if args.command == "diagnose":
         diagnose(mt5, shared)
         return
