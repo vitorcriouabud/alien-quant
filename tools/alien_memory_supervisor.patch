@@ -1,0 +1,43 @@
+--- a/supervisor.py
++++ b/supervisor.py
+@@ -859,6 +859,24 @@
+         except (KeyError, OSError, ValueError, subprocess.SubprocessError) as exc:
+             self.log_event(None, "data_catalog_failed", {"type": type(exc).__name__})
+ 
++    def refresh_shared_memory(self) -> None:
++        """Atualiza a visão de leitura apenas no Dell, a partir de código local."""
++        config = self.local_state / "quant_executor.json"
++        if not config.is_file() or not (self.central.parent / "MEMORIA_MESTRE_ALIEN.md").is_file():
++            return
++        try:
++            options = json.loads(config.read_text(encoding="utf-8-sig"))
++            runner = (Path(options["checkout"]) / "tools" / "alien_memory.py").resolve()
++            if runner.is_relative_to(self.workspace) or not runner.is_file():
++                return
++            subprocess.run(
++                [sys.executable, "-I", str(runner), "--central", str(self.central.parent), "atualizar"],
++                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
++                check=True, timeout=30,
++            )
++        except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError) as exc:
++            self.log_event(None, "memory_refresh_failed", {"type": type(exc).__name__})
++
+     def run_once(self) -> dict:
+         if not self.acquire_lock():
+             return {"status": "skipped", "reason": "another_supervisor_instance"}
+@@ -869,6 +887,7 @@
+             self.drain_tasks()
+             self.refresh_data_catalog()
+             self.run_intelligence()
++            self.refresh_shared_memory()
+             summary["recovered"] = recovered
+             self.record_cycle(summary)
+             return summary
+@@ -908,6 +927,7 @@
+                         ):
+                             worker = executor.submit(self.run_worker)
+                         self.record_cycle(summary)
++                        self.refresh_shared_memory()
+                     except (OSError, sqlite3.Error, ValueError) as exc:
+                         try:
+                             self.log_event(None, "cycle_failed", {"error": str(exc)})

@@ -1,0 +1,20 @@
+name: Verificar memória ALIEN
+on:
+  push:
+    branches: [experimental/memoria-compartilhada]
+    paths:
+      - tools/alien_memory.py
+      - tools/test_alien_memory.py
+      - tools/alien_memory_supervisor.patch
+      - .github/workflows/alien-memory.yml
+permissions:
+  contents: read
+jobs:
+  memory:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python -m unittest discover -s tools -p test_alien_memory.py -v
