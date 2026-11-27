@@ -28,7 +28,7 @@ def inventory(root, location):
     files = []
     if not root.is_dir():
         return files
-    for kind, extension in (("ticks", ".tkc"), ("history", ".hcc")):
+    for kind, extension in (("ticks", ".tkc"), ("history", ".hcc"), ("history", ".hcs")):
         pattern = f"*/{kind}/*/*{extension}"
         for path in sorted(root.glob(pattern)):
             server, _, symbol, name = path.relative_to(root).parts
@@ -115,7 +115,8 @@ def imported_proof(item, source_servers, overlaps_holdout):
             "timeframe": recorded["timeframe"], "ticks_processed": int(report["ticks"]),
             "bars": int(report["bars"]), "history_quality": report["quality"],
             "coverage": "verified_on_origin_host",
-            "evidence": {"kind": "reconciled_v2_report", "url": item["url"], "sha256": recorded["report_sha256"]},
+            "evidence": {"kind": "reconciled_v2_report", "url": item["url"],
+                         "sha256": recorded["report_sha256"], "origin_host": item.get("origin_host")},
         }
     except (ValueError, KeyError, TypeError):
         return None

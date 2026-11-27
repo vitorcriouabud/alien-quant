@@ -1,14 +1,20 @@
 --- a/supervisor.py
 +++ b/supervisor.py
-@@ -20,6 +20,7 @@
+@@ -16,10 +16,13 @@
+ from contextlib import closing
+ from datetime import datetime, timezone
+ from pathlib import Path
++from runpy import run_path
+ from typing import Iterable, Optional
  
  
  UTC = timezone.utc
 +QUANT_ACTION = "quant_backtest"
++PEER_ACTION = "peer_exchange"
  AI_ACTIONS = {"analyze_existing_report", "summarize"}
  ACTIONS = AI_ACTIONS | {"diagnose", "collect"}
  SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,80}")
-@@ -41,7 +42,7 @@
+@@ -41,7 +44,7 @@
  
  def atomic_bytes(path: Path, content: bytes) -> None:
      path.parent.mkdir(parents=True, exist_ok=True)
@@ -17,7 +23,7 @@
      try:
          temporary.write_bytes(content)
          os.replace(temporary, path)
-@@ -246,7 +247,9 @@
+@@ -246,7 +249,9 @@
      def recover_interrupted_tasks(self) -> int:
          rows = self.conn.execute("SELECT * FROM tasks WHERE status='processing'").fetchall()
          for row in rows:
@@ -28,19 +34,19 @@
                  error = "Execu??o de IA interrompida; reenvie com novo ID se necess?rio."
                  self.stage_result(row, error=error)
              else:
-@@ -290,7 +293,10 @@
+@@ -290,7 +295,10 @@
          if input_id is not None and (not isinstance(input_id, str) or not SAFE_ID.fullmatch(input_id)):
              return None, "invalid_id", payload
          action = self.normalize_action(payload)
 -        if action not in ACTIONS or action not in self.config["allowed_actions"]:
-+        if action == QUANT_ACTION:
++        if action in {QUANT_ACTION, PEER_ACTION}:
 +            if not (self.local_state / "quant_executor.json").is_file():
 +                return None, "quant_executor_not_configured", None
 +        elif action not in ACTIONS or action not in self.config["allowed_actions"]:
              return None, f"unsupported_action:{action or 'missing'}", payload
          task_id = f"task_{input_id}" if input_id else f"task_{uuid.uuid5(uuid.NAMESPACE_URL, task_hash)}"
  
-@@ -592,7 +598,39 @@
+@@ -592,7 +600,64 @@
          }
          return result
  
@@ -74,13 +80,38 @@
 +            "bundle_sha256": sha256_file(bundle),
 +        }
 +
++    def peer_exchange(self, payload: dict) -> dict:
++        options = json.loads((self.local_state / "quant_executor.json").read_text(encoding="utf-8-sig"))
++        peer = options.get("peer_exchange")
++        if not peer:
++            raise ValueError("Recepção entre máquinas desativada neste supervisor.")
++        checkout = Path(options["checkout"]).resolve()
++        if checkout.is_relative_to(self.workspace):
++            raise ValueError("Checkout do receptor deve ficar fora do Drive.")
++        receive = run_path(str(checkout / "tools/alien_peer_exchange.py"))["receive"]
++        return receive(self.entrada, self.local_state, payload, peer)
++
++    def peer_attachment_pending(self, row: sqlite3.Row) -> bool:
++        if row["action"] != PEER_ACTION or row["input_json"] is None:
++            return False
++        job = json.loads(row["input_json"].decode("utf-8-sig")).get("payload")
++        if not isinstance(job, dict) or job.get("kind") != "sqlite_snapshot":
++            return False
++        snapshot = job.get("snapshot_id")
++        if not isinstance(snapshot, str) or not SAFE_ID.fullmatch(snapshot):
++            return False
++        age = datetime.now(UTC) - datetime.fromisoformat(row["created_utc"])
++        return age.total_seconds() < 900 and not (self.entrada / f"{snapshot}.cms").is_file()
++
      def process_task(self, task_id: str, payload: dict, action: str) -> dict:
++        if action == PEER_ACTION:
++            return self.peer_exchange(payload)
 +        if action == QUANT_ACTION:
 +            return self.quant_backtest(task_id, payload)
          if action == "diagnose":
              return {"summary": "Diagnostico somente leitura concluido.", "findings": [self.diagnose()], "evidence": [], "uncertainties": [], "errors": []}
          if action == "collect":
-@@ -604,6 +642,11 @@
+@@ -604,6 +669,11 @@
          raise RuntimeError(f"Acao nao implementada: {action}")
  
      def stage_result(self, row: sqlite3.Row, result: Optional[dict] = None, error: Optional[str] = None) -> None:
@@ -92,7 +123,7 @@
          response = {
              "schema": "alien.result/v1",
              "task_id": row["task_id"],
-@@ -615,7 +658,10 @@
+@@ -615,7 +685,10 @@
              "summary": result.get("summary", "Tarefa conclu?da.") if result is not None else "A tarefa terminou com erro.",
              "result": result or {},
              "input_sha256": row["sha256"],
@@ -104,7 +135,7 @@
              "errors": [{"message": error}] if error is not None else result.get("errors", []),
          }
          with self.conn:
-@@ -630,6 +676,17 @@
+@@ -630,6 +703,17 @@
              raise ValueError("Identificador inv?lido no banco.")
          response = json.loads(row["result_json"])
          result_path = self.resultados / task_id / "RESULTADO.json"
@@ -122,7 +153,16 @@
          if result_path.exists():
              existing = json.loads(result_path.read_text(encoding="utf-8-sig"))
              if existing != response:
-@@ -737,13 +794,51 @@
+@@ -688,6 +772,8 @@
+             "SELECT * FROM tasks WHERE status='queued' ORDER BY created_utc,task_id"
+         ).fetchall()
+         for row in rows:
++            if self.peer_attachment_pending(row):
++                continue
+             self.execute_task(row)
+             staged = self.conn.execute("SELECT * FROM tasks WHERE task_id=?", (row["task_id"],)).fetchone()
+             self.try_publish(staged)
+@@ -737,13 +823,51 @@
              })
              self.set_state("intelligence", {"utc": utc_now(), "status": "error", "uses_ai": False})
  
@@ -174,7 +214,7 @@
              self.run_intelligence()
              summary["recovered"] = recovered
              self.record_cycle(summary)
-@@ -753,7 +848,9 @@
+@@ -753,7 +877,9 @@
  
      def run_worker(self) -> None:
          with closing(AlienSupervisor(self.central, self.local_state)) as worker:
