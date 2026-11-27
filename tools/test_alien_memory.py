@@ -94,6 +94,23 @@ class MemoryTests(unittest.TestCase):
         (d / name).write_bytes(mem.canonical(dict(e, motivo="Alterado.")))
         self.assertEqual(mem.events(self.central), ([closed], [], 1))
 
+    def test_native_drive_note_and_materialized_copy(self):
+        e = fixture()
+        data = mem.canonical(e)
+        digest = hashlib.sha256(data).hexdigest()
+        directory = mem.folder(self.central)
+        directory.mkdir(parents=True)
+        pointer = directory / f"{mem.event_id(e)}-{digest}.gdoc"
+        pointer.write_text(json.dumps({"doc_id": "offline_fixture_id"}))
+        self.assertIn("Registros nativos", mem.render(self.central))
+        self.assertIn("offline_fixture_id", mem.render(self.central))
+        mem.submit(self.central, e)
+        self.assertNotIn("Registros nativos", mem.render(self.central))
+        pointer.rename(directory / f"{mem.event_id(e)}-{'a' * 64}.gdoc")
+        text = mem.render(self.central)
+        self.assertIn("Etapas em conflito: codex-ensaio-000001", text)
+        self.assertNotIn("Revisar cobertura.", text)
+
     def test_private_material_rejected_before_publication(self):
         for key, value in (("motivo", "senha: exemplo ficticio"),
                            ("erros", ["Bearer FAKE"]), ("resultados", ["https://a.invalid/?x=fake"]),

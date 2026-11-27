@@ -202,8 +202,41 @@ def receipts(central):
     return sorted(set(rows)), skipped
 
 
+def drive_notes(central, records, conflicts):
+    """O Drive para computador pode expor Docs apenas como atalhos .gdoc."""
+    known = {event_id(e): hashlib.sha256(canonical(e)).hexdigest() for e in records}
+    by_key = defaultdict(dict)
+    pattern = re.compile(r"((?:chatgpt|codex|abacus|gemini)-([a-z][a-z0-9_-]{0,47})-[0-9]{6})-([0-9a-f]{64})(?: \([0-9]+\))?\.gdoc", re.I)
+    for path in folder(central).glob("*.gdoc"):
+        hit = pattern.fullmatch(path.name)
+        if not hit or SECRET.search(hit[2]):
+            continue
+        ident, digest = hit[1].lower(), hit[3].lower()
+        link = ""
+        try:
+            metadata = read_json(path, 8192)
+            doc_id = metadata.get("doc_id", "") if isinstance(metadata, dict) else ""
+            if isinstance(doc_id, str) and re.fullmatch(r"[-_A-Za-z0-9]{10,70}", doc_id):
+                link = f" (https://docs.google.com/document/d/{doc_id}/edit)"
+        except (OSError, ValueError, RecursionError):
+            pass
+        by_key[ident][digest] = link or by_key[ident].get(digest, "")
+    notes = []
+    for ident, variants in sorted(by_key.items()):
+        if (ident in conflicts or len(variants) > 1
+                or ident in known and known[ident] not in variants):
+            conflicts.add(ident)
+        for digest, link in sorted(variants.items()):
+            if known.get(ident) != digest:
+                notes.append(f"- {ident} · {digest}{link}")
+    return notes
+
+
 def render(central):
     records, conflicts, bad = events(central)
+    conflicts = set(conflicts)
+    notes = drive_notes(central, records, conflicts)
+    records = [e for e in records if event_id(e) not in conflicts]
     manifest, skipped = receipts(central)
     lines = ["# Retomada do ALIEN", "", "Leia primeiro MEMORIA_MESTRE_ALIEN.md na Central.",
              "", "## Etapas dos agentes", ""]
@@ -233,11 +266,14 @@ def render(central):
                         value = f"[{kind} · {ref}]({prefix}/RESULTADOS/task_{ref}/RESULTADO.json)"
                 lines.append(f"- {key} — {value}")
         lines.extend(["", "Limitações — " + e["limitacoes"], "Próximo passo — " + e["proximo_passo"], ""])
+    if notes:
+        lines.extend(["## Registros nativos do Drive a conferir", "",
+                      "Abra o documento em MEMORIA/eventos e confira o conteúdo e o hash antes de usar.", "", *notes, ""])
     lines.extend(["## Recibos dos supervisores", "",
                   "UTC · máquina · referência derivada da pasta · ação · estado", ""])
     lines.extend(" · ".join(row) for row in manifest)
     lines.extend(["", f"Registros inválidos omitidos: {bad}. Recibos inválidos omitidos: {skipped}.",
-                  f"Etapas em conflito: {', '.join(conflicts) or 'nenhuma'}.", ""])
+                  f"Etapas em conflito: {', '.join(sorted(conflicts)) or 'nenhuma'}.", ""])
     return "\n".join(lines)
 
 
