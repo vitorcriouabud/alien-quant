@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
+from types import SimpleNamespace
 import unittest
 
 import alien_memory as mem
@@ -104,6 +106,23 @@ class MemoryTests(unittest.TestCase):
             self.assertNotEqual(proc.returncode, 0)
             self.assertNotIn(str(value), proc.stderr + proc.stdout)
         self.assertFalse(mem.folder(self.central).exists())
+
+    def test_hook_from_supervisor_patch_invokes_local_writer(self):
+        patch = Path(mem.__file__).with_name("alien_memory_supervisor.patch").read_text(encoding="utf-8")
+        first_hunk = patch.split("@@")[2]
+        method = textwrap.dedent("\n".join(line[1:] for line in first_hunk.splitlines() if line.startswith("+")))
+        scope = {"json": json, "Path": Path, "subprocess": subprocess, "sys": sys}
+        exec(compile(method, "supervisor.patch", "exec"), scope)
+        state = self.local / "local-state"
+        state.mkdir()
+        (state / "quant_executor.json").write_text(json.dumps({"checkout": str(Path(mem.__file__).parents[1])}))
+        supervisor = SimpleNamespace(central=self.central / "MT5_DELL", local_state=state,
+                                     workspace=self.central, log_event=lambda *args: self.fail(str(args)))
+        e = fixture()
+        mem.submit(self.central, e)
+        scope["refresh_shared_memory"](supervisor)
+        self.assertIn(mem.event_id(e), self.state.read_text(encoding="utf-8"))
+        self.assertEqual(self.master.read_bytes(), b"master\n")
 
     def test_projection_of_real_supervisor_schema_without_payload(self):
         r = {"schema": "alien.result/v1", "task_id": "task_unit", "action": "diagnose",

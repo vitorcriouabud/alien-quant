@@ -142,7 +142,14 @@ def submit(central, event):
             tmp.unlink(missing_ok=True)
             raise
     try:
-        os.replace(tmp, target)
+        try:
+            if os.name == "nt":
+                os.rename(tmp, target)  # No Windows, falha quando o destino já existe.
+            else:
+                os.link(tmp, target)  # Criação atômica sem substituir o conteúdo anterior.
+        except OSError:
+            if not target.is_file() or canonical(valid(read_json(target))) != data:
+                raise
     finally:
         tmp.unlink(missing_ok=True)
     return target.name
