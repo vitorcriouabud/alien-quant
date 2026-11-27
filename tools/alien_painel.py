@@ -114,9 +114,9 @@ def recover(central, state, beat, now):
     if mode is None:
         return "Agendador indisponível"
     mode = mode.strip()
-    start = "Start-ScheduledTask -TaskName 'ALIEN Autonomous Lab Supervisor' -TaskPath '\\';'OK'"
+    start = ["schtasks.exe", "/Run", "/TN", "\\" + TASK]
     if mode == "Ready":
-        return ("Início solicitado ao Agendador" if powershell(get + start, env=env) else
+        return ("Início solicitado ao Agendador" if process(start, timeout=18) is not None else
                 "Início recusado pelo Agendador")
     stamp = when(beat.get("utc"))
     if mode != "Running" or not stamp or (now - stamp).total_seconds() <= 480:
@@ -145,15 +145,16 @@ def recover(central, state, beat, now):
                 "$p=Get-CimInstance Win32_Process -Filter ('ProcessId='+$env:ALIEN_HEALTH_PID);"
                 "if(!$p -or !$p.CommandLine -or $p.CommandLine.IndexOf($env:ALIEN_HEALTH_STATE,[StringComparison]::OrdinalIgnoreCase) -lt 0 "
                 "-or $p.CommandLine -notlike '*supervisor.py*--continuous*'){throw 'Processo não confirmado'};"
-                "Stop-ScheduledTask -TaskName 'ALIEN Autonomous Lab Supervisor' -TaskPath '\\';'OK'"
+                "'OK'"
             )
-            stopped = powershell(get + stop, timeout=15, env=env)
+            verified = powershell(get + stop, timeout=30, env=env)
+            stopped = bool(verified and process(["schtasks.exe", "/End", "/TN", "\\" + TASK], timeout=18) is not None)
             db.rollback()
     except sqlite3.Error:
         return "Heartbeat atrasado. SQLite ocupado ou indisponível"
     if not stopped:
         return "Heartbeat atrasado. Parada recusada ou inconclusiva"
-    return ("Supervisor reiniciado pelo monitor" if powershell(get + start, env=env) else
+    return ("Supervisor reiniciado pelo monitor" if process(start, timeout=18) is not None else
             "Parada confirmada. Aguardando novo ciclo de início")
 
 
